@@ -1,0 +1,100 @@
+name: Build both Hytale channels
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Relwind release version; empty keeps the version from pom.xml
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Hytale ${{ matrix.channel }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [release, pre-release]
+    env:
+      CHANNEL: ${{ matrix.channel }}
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: '**/pom.xml'
+      - name: Set release version
+        if: inputs.version != ''
+        run: >-
+          mvn --batch-mode --no-transfer-progress
+          org.codehaus.mojo:versions-maven-plugin:2.19.1:set
+          -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false
+          -DprocessAllModules=true
+      - name: Build and test
+        run: >-
+          mvn --batch-mode --no-transfer-progress -Dhytale.channel="$CHANNEL"
+          clean verify
+      - name: Generate aggregate Javadoc
+        # Fork compilation so build-helper registers every module's channel sources.
+        run: >-
+          mvn --batch-mode --no-transfer-progress -Dhytale.channel="$CHANNEL"
+          javadoc:aggregate
+          -Ddoctitle="Relwind API — Hytale $CHANNEL"
+          -Dwindowtitle="Relwind API — Hytale $CHANNEL"
+      - name: Run slow tests
+        run: >-
+          mvn --batch-mode --no-transfer-progress -Dhytale.channel="$CHANNEL"
+          -pl relwind-component -Pintegrate test
+      - name: Stage channel-specific artifacts
+        run: |
+          version=$(mvn --batch-mode --no-transfer-progress -q -Dstyle.color=never \
+            help:evaluate -Dexpression=project.version -DforceStdout)
+          mkdir -p "dist/$CHANNEL"
+          for module in relwind-component relwind-coreserver relwind relwind-examples; do
+            for classifier in '' '-sources' '-javadoc'; do
+              cp "$module/target/$module-$version$classifier.jar" \
+                "dist/$CHANNEL/$module-$version-hytale-$CHANNEL$classifier.jar"
+            done
+          done
+          (
+            cd "dist/$CHANNEL"
+            sha256sum ./*.jar > "SHA256SUMS-hytale-$CHANNEL.txt"
+          )
+          test -s target/reports/apidocs/index.html
+          mkdir -p "site/$CHANNEL"
+          cp -a target/reports/apidocs/. "site/$CHANNEL/"
+          cp LICENSE "site/$CHANNEL/LICENSE"
+      - name: Upload distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-${{ matrix.channel }}
+          path: dist/${{ matrix.channel }}/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - name: Upload Javadoc
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: javadoc-${{ matrix.channel }}
+          path: site/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-reports-${{ matrix.channel }}
+          path: '**/target/surefire-reports/'
+          if-no-files-found: ignore
+          retention-days: 14
