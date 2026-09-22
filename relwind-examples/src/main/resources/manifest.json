@@ -1,0 +1,12 @@
+{
+  "Group": "Relwind",
+  "Name": "Examples",
+  "Version": "${project.version}",
+  "Description": "Create, inspect and remove live entity links with /relwind.",
+  "Main": "dev.hytalemodding.blovien.relwind.examples.RelwindExamplePlugin",
+  "ServerVersion": "*",
+  "IncludesAssetPack": false,
+  "Dependencies": {
+    "Blovien:Relwind": "*"
+  }
+}
