@@ -1,0 +1,14 @@
+{
+  "Group": "Blovien",
+  "Name": "Relwind",
+  "Version": "${project.version}",
+  "Description": "Entity relationships support for Hytale ECS.",
+  "Main": "dev.hytalemodding.blovien.relwind.plugin.Relwind",
+  "ServerVersion": "*",
+  "IncludesAssetPack": false,
+  "Dependencies": {
+    "Hytale:EntityModule": "*",
+    "Hytale:LegacyModule": "*",
+    "Hytale:Universe": "*"
+  }
+}

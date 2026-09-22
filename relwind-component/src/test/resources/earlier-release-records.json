@@ -1,0 +1,3 @@
+{"commit": "aec6ead5ddc89b5f8a4701f8ef4ef0457da14829",
+"same": {"Links": [{"Version": 1, "Type": "relwind:test/baselineSame", "Target": "same-target", "CleanupDisposition": "PreserveSource", "Payload": "same-data", "TargetInstallation": "ENTITIES"}]},
+"bridge": {"Links": [{"Version": 1, "Type": "relwind:test/baselineBridge", "Target": 7, "CleanupDisposition": "PreserveSource", "Payload": "bridge-data", "TargetInstallation": "CHUNK_POSITIONS"}]}}
