@@ -4,7 +4,7 @@ Relwind is a Java library and server plugin that implemements **entity relations
 
 ## Features
 
-The core idea behind Relwind is the concept of a _Relationship_: a relationship is a link between two ecs entities that can
+The core idea behind Relwind is the concept of a _Relationship_: a relationship is a link between two (or more) ecs entities that can
 (optionally) hold data.
 
 To achieve this result in the Hytale ECS, it's common to store entity references inside of components, which can become
