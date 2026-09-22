@@ -4,7 +4,7 @@ Relwind is a Java library and server plugin that implemements **entity relations
 
 ## Features
 
-The core idea behind Relwind is the concept of a _Relationship_: a relationship is a link between two ecs entities that can
+The core idea behind Relwind is the concept of a _Relationship_: a relationship is a link between two (or more) ecs entities that can
 (optionally) hold data.
 
 To achieve this result in the Hytale ECS, it's common to store entity references inside of components, which can become
@@ -19,7 +19,8 @@ Other features are the following:
 - **Lifecycle policies:** choose whether links survive transfers and temporary deactivation, and whether deleting a target also deletes its linked sources.
 - **Persistence:** named relationship types save their links; unnamed types remain in memory. Retained links can remain unresolved while a linked entity is unavailable.
 - **ECS integration:** native command buffers and relationship-aware ticking, change, event, and lifecycle systems.
-- **Entity and block entity support:** relationships within `EntityStore` or `ChunkStore`, plus bridge relationships between the two Store kinds in the same world.
+- **Entity and block entity support:** relationships within `EntityStore` or `ChunkStore`
+- **Cross-Store relationships and systems (wip)**: relationships across different stores (`EntityStore`, `ChunkStore` and custom `StoreInstallation`(s))
 
 ## Build
 
@@ -109,8 +110,6 @@ mvn -pl relwind-component -Pintegrate -Dhytale.channel=pre-release test
 ```
 
 For release-channel testing, use `-Dhytale.channel=release`.
-
-Build-generated Javadoc is also available in each module's `target/*-javadoc.jar`.
 
 ## LLM usage
 
