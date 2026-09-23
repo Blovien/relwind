@@ -373,6 +373,45 @@ class RelationshipTrackerTest {
     }
 
     @Test
+    void aNegatedConditionTicksASourceWithoutTheLinkAndSkipsASourceWhoseReleasedLinkIsUnresolved() {
+        try (var fixture = new Fixture()) {
+            var follows = fixture.types.registerRelationship(RelationshipRules.multiple());
+            var owns = fixture.types.registerRelationship(RelationshipRules.multiple().retainOnDeactivation());
+            var leader = fixture.add(fixture.firstStore);
+            var unarmed = fixture.add(fixture.firstStore);
+            var armed = fixture.add(fixture.firstStore);
+            var weapon = fixture.add(fixture.firstStore);
+            relationships.addTarget(fixture.firstStore, unarmed.ref(), follows, leader.ref());
+            relationships.addTarget(fixture.firstStore, armed.ref(), follows, leader.ref());
+            relationships.addTarget(fixture.firstStore, armed.ref(), owns, weapon.ref());
+            var query = RelationshipQuery.of(
+                Query.not(RelationshipQuery.exists(owns, Query.any())), follows, Query.any());
+            var ticked = new java.util.ArrayList<Ref<Object>>();
+            fixture.registry.registerSystem(new RelationshipTickingSystem<Object, Void>() {
+                @Nonnull @Override
+                public RelationshipQuery.Definition<Object, Void> getQuery() {
+                    return query;
+                }
+
+                @Override
+                protected void tickRelationship(
+                    float seconds,
+                    RelationshipResult<Object, Void> result,
+                    Store<Object> store,
+                    CommandBuffer<Object> commands
+                ) {
+                    ticked.add(result.getSource());
+                }
+            });
+            fixture.unload(weapon, UnloadReason.DEACTIVATION);
+
+            fixture.firstStore.tick(0.05f);
+
+            assertEquals(java.util.List.of(unarmed.ref()), ticked);
+        }
+    }
+
+    @Test
     void retargetCannotOverwriteAnExistingPendingDestination() {
         try (var fixture = new Fixture()) {
             var type = fixture.registerRuntime(

@@ -225,14 +225,32 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
 
     @Override
     public final boolean test(Archetype<ECS_TYPE> archetype) {
-        return getPossibility(archetype) != Truth.FALSE;
+        return getPossibility(archetype, Admission.HOLDERS) != Truth.FALSE;
+    }
+
+    /// Admits only archetypes whose loaded entities can match. A loaded entity without a type's
+    /// storage component cannot satisfy a positive condition on that type. {@link #test} keeps the
+    /// tracker check because parked and decoded holders carry links without storage components.
+    final boolean testLoaded(Archetype<ECS_TYPE> archetype) {
+        return getPossibility(archetype, Admission.LOADED) != Truth.FALSE;
+    }
+
+    enum Admission {
+        HOLDERS,
+        LOADED
+    }
+
+    @Nonnull
+    static Truth linkPossibility(boolean hasStorage, RelationshipTypeRegistry<?> registry, Admission admission) {
+        return hasStorage || (admission == Admission.HOLDERS && registry.getTracker() != null)
+            ? Truth.UNKNOWN : Truth.FALSE;
     }
 
     boolean containsRecursion() {
         return false;
     }
 
-    @Nonnull abstract Truth getPossibility(Archetype<ECS_TYPE> archetype);
+    @Nonnull abstract Truth getPossibility(Archetype<ECS_TYPE> archetype, Admission admission);
 
     @Nonnull abstract Truth evaluate(Store<ECS_TYPE> store, @Nullable Ref<ECS_TYPE> entity, Evaluation<ECS_TYPE> evaluation);
 
@@ -288,8 +306,8 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
         }
 
         @Nonnull @Override
-        Truth getPossibility(Archetype<ECS_TYPE> archetype) {
-            return condition.getPossibility(archetype);
+        Truth getPossibility(Archetype<ECS_TYPE> archetype, Admission admission) {
+            return condition.getPossibility(archetype, admission);
         }
 
         @Nonnull @Override
@@ -724,7 +742,7 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
         }
 
         @Nonnull @Override
-        Truth getPossibility(Archetype<ECS_TYPE> archetype) {
+        Truth getPossibility(Archetype<ECS_TYPE> archetype, Admission admission) {
             return query.test(archetype) ? Truth.TRUE : Truth.FALSE;
         }
 
@@ -770,10 +788,10 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
         }
 
         @Nonnull @Override
-        Truth getPossibility(Archetype<ECS_TYPE> archetype) {
+        Truth getPossibility(Archetype<ECS_TYPE> archetype, Admission admission) {
             var result = Truth.TRUE;
             for (RelationshipQuery<ECS_TYPE> condition : conditions) {
-                var current = condition.getPossibility(archetype);
+                var current = condition.getPossibility(archetype, admission);
                 if (current == Truth.FALSE) return Truth.FALSE;
                 if (current == Truth.UNKNOWN) result = Truth.UNKNOWN;
             }
@@ -861,10 +879,10 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
         }
 
         @Nonnull @Override
-        Truth getPossibility(Archetype<ECS_TYPE> archetype) {
+        Truth getPossibility(Archetype<ECS_TYPE> archetype, Admission admission) {
             var result = Truth.FALSE;
             for (RelationshipQuery<ECS_TYPE> alternative : alternatives) {
-                var current = alternative.getPossibility(archetype);
+                var current = alternative.getPossibility(archetype, admission);
                 if (current == Truth.TRUE) return Truth.TRUE;
                 if (current == Truth.UNKNOWN) result = Truth.UNKNOWN;
             }
@@ -933,8 +951,8 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
         }
 
         @Nonnull @Override
-        Truth getPossibility(Archetype<ECS_TYPE> archetype) {
-            return switch (condition.getPossibility(archetype)) {
+        Truth getPossibility(Archetype<ECS_TYPE> archetype, Admission admission) {
+            return switch (condition.getPossibility(archetype, admission)) {
                 case FALSE -> Truth.TRUE;
                 case TRUE -> Truth.FALSE;
                 case UNKNOWN -> Truth.UNKNOWN;
@@ -1019,9 +1037,8 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
         }
 
         @Nonnull @Override
-        Truth getPossibility(Archetype<ECS_TYPE> archetype) {
-            return type.getSourceType().test(archetype) || type.getRelationshipTypeRegistry().getTracker() != null
-                ? Truth.UNKNOWN : Truth.FALSE;
+        Truth getPossibility(Archetype<ECS_TYPE> archetype, Admission admission) {
+            return linkPossibility(type.getSourceType().test(archetype), type.getRelationshipTypeRegistry(), admission);
         }
 
         @Nonnull @Override
@@ -1072,9 +1089,8 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
         }
 
         @Nonnull @Override
-        Truth getPossibility(Archetype<SOURCE> archetype) {
-            return type.getSourceType().test(archetype) || type.getRelationshipTypeRegistry().getTracker() != null
-                ? Truth.UNKNOWN : Truth.FALSE;
+        Truth getPossibility(Archetype<SOURCE> archetype, Admission admission) {
+            return linkPossibility(type.getSourceType().test(archetype), type.getRelationshipTypeRegistry(), admission);
         }
 
         @Nonnull @Override
@@ -1142,9 +1158,8 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
         }
 
         @Nonnull @Override
-        Truth getPossibility(Archetype<ECS_TYPE> archetype) {
-            return type.getSourceType().test(archetype) || type.getRelationshipTypeRegistry().getTracker() != null
-                ? Truth.UNKNOWN : Truth.FALSE;
+        Truth getPossibility(Archetype<ECS_TYPE> archetype, Admission admission) {
+            return linkPossibility(type.getSourceType().test(archetype), type.getRelationshipTypeRegistry(), admission);
         }
 
         @Nonnull @Override

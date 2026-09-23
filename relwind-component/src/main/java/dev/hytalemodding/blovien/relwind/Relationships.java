@@ -165,6 +165,9 @@ public final class Relationships implements AutoCloseable {
         var results = access.<LINK_DATA>borrowResults();
         try {
             store.forEachChunk(query, (chunk, commands) -> {
+                if (!query.testLoaded(chunk.getArchetype())) {
+                    return;
+                }
                 for (int index = 0; index < chunk.size(); index++) {
                     RelationshipEvaluator.evaluate(store, chunk.getReferenceTo(index), query, results);
                     for (int i = 0; i < results.size(); i++) {
