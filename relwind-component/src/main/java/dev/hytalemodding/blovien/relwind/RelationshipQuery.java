@@ -184,22 +184,15 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
         return new ComponentChange<>(sourceQuery, type, targetQuery, componentType);
     }
 
-    // a holder read or a component callback must see the instance it was given
     @Nullable
     private static <ECS_TYPE, DATA> DATA getLinkData(
-        Evaluation<ECS_TYPE> evaluation,
-        Store<ECS_TYPE> store,
-        @Nullable Ref<ECS_TYPE> source,
         GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type,
         OutgoingLink<ECS_TYPE, ECS_TYPE> outgoing,
         int index
     ) {
         @SuppressWarnings("unchecked")
         var dataClass = (Class<DATA>) type.getDescriptor().linkDataClass();
-        ComponentType<ECS_TYPE, Component<ECS_TYPE>> dataType = type.getDescriptor().getDataComponentType();
-        return dataType == null
-            ? outgoing.getData(index, dataClass)
-            : dataClass.cast(evaluation.getComponent(store, source, dataType));
+        return outgoing.getData(index, dataClass);
     }
 
     @Nonnull
@@ -463,7 +456,7 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
                 var outgoing = sourceHolder.getComponent(type.getSourceType());
                 if (outgoing != null) {
                     for (int i = 0; i < outgoing.size(); i++) {
-                        read.accept(outgoing.getTarget(i), getLinkData(this, store, null, type, outgoing, i));
+                        read.accept(outgoing.getTarget(i), getLinkData(type, outgoing, i));
                     }
                 }
                 var tracker = type.getRelationshipTypeRegistry().getTracker();
@@ -1190,7 +1183,7 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
                     || targetQuery.evaluate(store, target, evaluation) != Truth.TRUE) {
                     continue;
                 }
-                evaluation.set(this, entity, target, getLinkData(evaluation, store, entity, type, outgoing, i));
+                evaluation.set(this, entity, target, getLinkData(type, outgoing, i));
                 try {
                     targetQuery.emit(store, target, evaluation, match);
                 } finally {

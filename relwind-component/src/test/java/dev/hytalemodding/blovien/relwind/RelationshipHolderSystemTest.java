@@ -119,18 +119,16 @@ class RelationshipHolderSystemTest {
     void theRemovalCallbackReadsTheLinkDataFromTheHolderThatCarriesTheOutgoingLink() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var saddleType = fixture.registry().registerComponent(Saddle.class, Saddle::new);
-            var mounted = types.registerRelationship(saddleType, new SaddleObserver(), RelationshipRules.single());
+            var mounted = types.registerRelationship(Saddle.class, RelationshipRules.single());
             var system = new MountedHolderSystem(fixture.positionType(), fixture.playerType(), mounted);
             fixture.registry().registerSystem(system);
             var rider = fixture.addEntity(new Position(1, 2), null);
             var mount = fixture.addEntity(new Position(3, 4), new Player("mount"));
-            var saddle = new Saddle();
+            var saddle = new Saddle(1);
             relationships.addTarget(fixture.store(), rider, mounted, mount, saddle);
 
             var holder = fixture.store().removeEntity(rider, RemoveReason.UNLOAD);
 
-            assertSame(saddle, holder.getComponent(saddleType));
             assertSame(holder, system.removeHolder);
             assertSame(mount, system.removeTarget);
             assertSame(saddle, system.removeData);
@@ -141,13 +139,12 @@ class RelationshipHolderSystemTest {
     void theAddCallbackReadsTheLinkDataFromTheHolderThatCarriesTheOutgoingLink() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var saddleType = fixture.registry().registerComponent(Saddle.class, Saddle::new);
-            var mounted = types.registerRelationship(saddleType, new SaddleObserver(), RelationshipRules.single());
+            var mounted = types.registerRelationship(Saddle.class, RelationshipRules.single());
             var system = new MountedHolderSystem(fixture.positionType(), fixture.playerType(), mounted);
             fixture.registry().registerSystem(system);
             var rider = fixture.addEntity(new Position(1, 2), null);
             var mount = fixture.addEntity(new Position(3, 4), new Player("mount"));
-            var saddle = new Saddle();
+            var saddle = new Saddle(1);
             relationships.addTarget(fixture.store(), rider, mounted, mount, saddle);
             var holder = fixture.store().removeEntity(rider, RemoveReason.UNLOAD);
 
@@ -165,16 +162,7 @@ class RelationshipHolderSystemTest {
             RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
     }
 
-    /// Link data of a single target type, carried by a component on the source.
-    public static final class Saddle implements com.hypixel.hytale.component.Component<Object> {
-        private int seat;
-
-        @Override
-        public Saddle clone() {
-            var copy = new Saddle();
-            copy.seat = seat;
-            return copy;
-        }
+    public record Saddle(int seat) {
     }
 
     public static final class MountedHolderSystem extends RelationshipHolderSystem<Object, Saddle> {
@@ -279,8 +267,5 @@ class RelationshipHolderSystemTest {
                 removeTargets.add(result.getTarget());
             }
         }
-    }
-
-    private static final class SaddleObserver extends RelationshipDataObserver<Object, Saddle> {
     }
 }

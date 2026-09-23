@@ -83,7 +83,6 @@ class RelationshipPersistenceTest {
 
     // TODO: Migrate BSON_DOCUMENT and BsonDocumentCodec usages when Hytale supplies an equivalent
     // for arbitrary BSON payloads. Shared-source Codec only records a future buffer replacement.
-    private static final String MOUNT_COMPONENT_ID = "RelwindTestMount";
 
     @Test
     void aSavedLinkRecordCarriesTheLinkSchema() {
@@ -1176,59 +1175,6 @@ class RelationshipPersistenceTest {
         }
     }
 
-    @Test
-    void aSavedDataComponentLinkCarriesNoPayload() {
-        var targetId = UUID.randomUUID();
-
-        var savedSource = mountedSource(targetId, 7);
-
-        var components = savedSource.getDocument("Components");
-        var record = components.getDocument(RelationshipPersistence.COMPONENT_ID)
-            .getArray("Links").get(0).asDocument();
-        assertFalse(record.containsKey("Payload"), savedSource.toString());
-        assertEquals(7, components.getDocument(MOUNT_COMPONENT_ID).getInt32("Seat").getValue());
-    }
-
-    @Test
-    void aSavedDataComponentLinkReloadsWithItsComponent() {
-        var targetId = UUID.randomUUID();
-        var savedSource = mountedSource(targetId, 7);
-
-        try (var restored = new Fixture()) {
-            var mountType = restored.registry.registerComponent(Mount.class, MOUNT_COMPONENT_ID, Mount.CODEC);
-            var mounted = mountedType(restored.types, mountType);
-            var target = restored.add(targetId);
-            var source = restored.add(savedSource);
-
-            restored.persistence.restore(source);
-
-            assertSame(target, relationships.getFirstTarget(source, mounted));
-            var data = relationships.getData(source, mounted, target);
-            assertSame(restored.store.getComponent(source, mountType), data);
-            assertEquals(7, data.seat);
-        }
-    }
-
-    @Test
-    void aSavedDataComponentLinkWithoutItsComponentReloadsWithoutData() {
-        var targetId = UUID.randomUUID();
-        var savedSource = mountedSource(targetId, 7);
-        savedSource.getDocument("Components").remove(MOUNT_COMPONENT_ID);
-
-        try (var restored = new Fixture()) {
-            var mountType = restored.registry.registerComponent(Mount.class, MOUNT_COMPONENT_ID, Mount.CODEC);
-            var mounted = mountedType(restored.types, mountType);
-            var target = restored.add(targetId);
-            var source = restored.add(savedSource);
-
-            restored.persistence.restore(source);
-
-            assertSame(target, relationships.getFirstTarget(source, mounted));
-            assertNull(relationships.getData(source, mounted, target));
-            assertNull(restored.store.getComponent(source, mountType));
-        }
-    }
-
     private enum Snapshot {
         CLONE,
         FREEZE
@@ -1236,10 +1182,8 @@ class RelationshipPersistenceTest {
 
     @ParameterizedTest
     @EnumSource(Snapshot.class)
-    void cloningOrFreezingLeavesDataComponentRecordsWithoutAPayloadAndKeepsSlotPayloads(Snapshot snapshot) {
+    void cloningOrFreezingKeepsSlotPayloads(Snapshot snapshot) {
         try (var fixture = new Fixture()) {
-            var mountType = fixture.registry.registerComponent(Mount.class, MOUNT_COMPONENT_ID, Mount.CODEC);
-            var mounted = mountedType(fixture.types, mountType);
             var slotted = fixture.types.registerRelationship(
                 "relwind:test/slotted",
                 Slot.class,
@@ -1247,13 +1191,11 @@ class RelationshipPersistenceTest {
                 RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
             var source = fixture.add(UUID.randomUUID());
             var target = fixture.add(UUID.randomUUID());
-            relationships.addTarget(fixture.store, source, mounted, target, new Mount(7));
             relationships.addTarget(fixture.store, source, slotted, target, new Slot(5));
             var metadata = fixture.store.getComponent(source, fixture.persistence.getComponentType());
 
-            var copied = copyOf(snapshot, fixture, metadata, mounted, slotted);
+            var copied = copyOf(snapshot, fixture, metadata, slotted);
 
-            assertFalse(record(copied, "relwind:test/mounted").containsKey("Payload"), copied.toString());
             assertEquals(5, record(copied, "relwind:test/slotted").getDocument("Payload")
                 .getInt32("Value").getValue());
         }
@@ -1263,34 +1205,13 @@ class RelationshipPersistenceTest {
         Snapshot snapshot,
         Fixture fixture,
         RelationshipMetadata<Object> metadata,
-        GenericRelationshipType<Object, Object, Mount> mounted,
         GenericRelationshipType<Object, Object, Slot> slotted
     ) {
         if (snapshot == Snapshot.CLONE) {
             return metadata.clone().getContent();
         }
-        fixture.types.unregisterRelationship(mounted);
         fixture.types.unregisterRelationship(slotted);
         return metadata.getContent();
-    }
-
-    private static BsonDocument mountedSource(UUID targetId, int seat) {
-        try (var original = new Fixture()) {
-            var mountType = original.registry.registerComponent(Mount.class, MOUNT_COMPONENT_ID, Mount.CODEC);
-            var mounted = mountedType(original.types, mountType);
-            var source = original.add(UUID.randomUUID());
-            var target = original.add(targetId);
-            relationships.addTarget(original.store, source, mounted, target, new Mount(seat));
-            return original.registry.serialize(original.store.copySerializableEntity(source));
-        }
-    }
-
-    private static GenericRelationshipType<Object, Object, Mount> mountedType(
-        RelationshipTypeRegistry<Object> types,
-        ComponentType<Object, Mount> mountType
-    ) {
-        return types.registerRelationship("relwind:test/mounted", mountType, new MountObserver(),
-            RelationshipRules.single().retainOnTransfer().retainOnDeactivation());
     }
 
     private static BsonDocument record(BsonDocument content, String typeId) {
@@ -1491,27 +1412,6 @@ class RelationshipPersistenceTest {
         @Override
         public TagIdentity clone() {
             return new TagIdentity(tag());
-        }
-    }
-
-    private static final class Mount implements Component<Object> {
-        private static final BuilderCodec<Mount> CODEC = BuilderCodec.builder(Mount.class, Mount::new)
-            .append(new KeyedCodec<>("Seat", Codec.INTEGER), (mount, seat) -> mount.seat = seat, mount -> mount.seat)
-            .add()
-            .build();
-
-        private int seat;
-
-        private Mount() {
-        }
-
-        private Mount(int seat) {
-            this.seat = seat;
-        }
-
-        @Override
-        public Mount clone() {
-            return new Mount(seat);
         }
     }
 
@@ -1799,8 +1699,5 @@ class RelationshipPersistenceTest {
             assertNotNull(saved, "the saved records of the earlier release are missing");
             return new String(saved.readAllBytes(), StandardCharsets.UTF_8);
         }
-    }
-
-    private static final class MountObserver extends RelationshipDataObserver<Object, Mount> {
     }
 }

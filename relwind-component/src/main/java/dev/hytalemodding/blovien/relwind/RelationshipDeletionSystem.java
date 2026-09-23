@@ -8,10 +8,8 @@ package dev.hytalemodding.blovien.relwind;
 
 import com.hypixel.hytale.component.AddReason;
 import com.hypixel.hytale.component.CommandBuffer;
-import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentRegistry;
 import com.hypixel.hytale.component.IComponentRegistry;
-import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
@@ -376,8 +374,8 @@ final class RelationshipDeletionSystem<ECS_TYPE> extends RefSystem<ECS_TYPE> imp
                 persistence.validateMutation(type, source, links.targetIdentity());
             }
             deletion.removals.add(RelationshipChangeSystem.newRemoval(type, source, getIdentity(tracker, source),
-                deleted, getIdentity(tracker, deleted), getLinkData(store, type, source, deleted, outgoing)));
-            RelationshipLifecycle.detachAfterDeletion(store, type, source, deleted, deleted);
+                deleted, getIdentity(tracker, deleted), outgoing.getData(deleted, Object.class)));
+            RelationshipLifecycle.detachLinkedEntity(store, type, source, deleted, deleted);
             if (tracker != null) {
                 tracker.onUnlinked(type, source, deleted);
                 if (persistence != null) {
@@ -392,20 +390,6 @@ final class RelationshipDeletionSystem<ECS_TYPE> extends RefSystem<ECS_TYPE> imp
                 deletion.cascading.addLast(source);
             }
         }
-    }
-
-    @Nullable
-    private static <ECS_TYPE> Object getLinkData(
-        Store<ECS_TYPE> store,
-        GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type,
-        Ref<ECS_TYPE> source,
-        Ref<ECS_TYPE> target,
-        OutgoingLink<ECS_TYPE, ECS_TYPE> outgoing
-    ) {
-        ComponentType<ECS_TYPE, Component<ECS_TYPE>> dataType = type.getDescriptor().getDataComponentType();
-        return dataType == null
-            ? outgoing.getData(target, Object.class)
-            : store.getComponent(source, dataType);
     }
 
     @Nullable

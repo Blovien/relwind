@@ -25,7 +25,6 @@ import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.component.system.RefSystem;
 import com.hypixel.hytale.component.system.RefChangeSystem;
 import com.hypixel.hytale.codec.Codec;
-import com.hypixel.hytale.component.Component;
 import org.junit.jupiter.api.Test;
 
 import javax.annotation.Nonnull;
@@ -429,19 +428,14 @@ class RelationshipDeletionTest {
     }
 
     @Test
-    void aCascadingDeletionOfASourceWithADataComponentAnnouncesNoDataChange() {
+    void aCascadingDeletionOfASourceAnnouncesItsRemovedDataAndNoDataChange() {
         try (var fixture = new Fixture()) {
-            var saddleType = fixture.registry.registerComponent(Saddle.class, Saddle::new);
-            var mounted = fixture.types.registerRelationship(
-                saddleType,
-                new SaddleObserver(),
-                RelationshipRules.single().cascadeSource());
+            var mounted = fixture.types.registerRelationship(Saddle.class, RelationshipRules.single().cascadeSource());
             var store = fixture.store();
             var rider = fixture.entity("rider");
             var mount = fixture.entity("mount");
-            var saddle = new Saddle();
+            var saddle = new Saddle(1);
             relationships.addTarget(fixture.store(), rider, mounted, mount, saddle);
-            assertSame(saddle, store.getComponent(rider, saddleType));
 
             var removed = new ArrayList<Saddle>();
             var sets = new ArrayList<Saddle>();
@@ -481,37 +475,15 @@ class RelationshipDeletionTest {
     }
 
     @Test
-    void aDeletedTargetTakesTheDataComponentFromItsLiveSource() {
-        try (var fixture = new Fixture()) {
-            var saddleType = fixture.registry.registerComponent(Saddle.class, Saddle::new);
-            var mounted = fixture.types.registerRelationship(saddleType, new SaddleObserver(), RelationshipRules.single());
-            var store = fixture.store();
-            var rider = fixture.entity("rider");
-            var mount = fixture.entity("mount");
-            var saddle = new Saddle();
-            relationships.addTarget(store, rider, mounted, mount, saddle);
-            assertSame(saddle, store.getComponent(rider, saddleType));
-
-            store.removeEntity(mount, RemoveReason.REMOVE);
-
-            assertTrue(rider.isValid());
-            assertEquals(0, relationships.getTargetCount(rider, mounted));
-            assertNull(store.getComponent(rider, saddleType));
-        }
-    }
-
-    @Test
     void aCascadingDeletionReachesASourceThatIsAwayAsAHolder() {
         try (var fixture = new Fixture()) {
-            var saddleType = fixture.registry.registerComponent(Saddle.class, Saddle::new);
             var mounted = fixture.types.registerRelationship(
-                saddleType,
-                new SaddleObserver(),
+                Saddle.class,
                 RelationshipRules.single().retainOnDeactivation().cascadeSource());
             var store = fixture.store();
             var rider = fixture.entity("rider");
             var mount = fixture.entity("mount");
-            var saddle = new Saddle();
+            var saddle = new Saddle(1);
             relationships.addTarget(fixture.store(), rider, mounted, mount, saddle);
 
             var parked = store.removeEntity(rider, RemoveReason.UNLOAD);
@@ -520,7 +492,6 @@ class RelationshipDeletionTest {
             var mountHolder = store.removeEntity(mount, RemoveReason.REMOVE);
             fixture.tracker.onEntityDeleted("mount", mount, mountHolder);
 
-            assertSame(saddle, parked.getComponent(saddleType));
             assertEquals(0, store.getEntityCount());
 
             var returned = Objects.requireNonNull(store.addEntity(parked, AddReason.LOAD));
@@ -532,16 +503,7 @@ class RelationshipDeletionTest {
         }
     }
 
-    /// Link data of a single target type, carried by a component on the source.
-    private static final class Saddle implements Component<Object> {
-        private int seat;
-
-        @Override
-        public Saddle clone() {
-            var copy = new Saddle();
-            copy.seat = seat;
-            return copy;
-        }
+    private record Saddle(int seat) {
     }
 
     private static Ref<Object> addEntity(Store<Object> store) {
@@ -840,8 +802,5 @@ class RelationshipDeletionTest {
             assertEquals(1, relationships.getTargetCount(carrier, carries));
             assertSame(other, relationships.getFirstTarget(carrier, carries));
         }
-    }
-
-    private static final class SaddleObserver extends RelationshipDataObserver<Object, Saddle> {
     }
 }

@@ -7,7 +7,6 @@
 package dev.hytalemodding.blovien.relwind;
 
 import com.hypixel.hytale.component.CommandBuffer;
-import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.StoreFixture;
@@ -15,7 +14,6 @@ import com.hypixel.hytale.component.StoreFixture.Position;
 import com.hypixel.hytale.component.dependency.Dependency;
 import com.hypixel.hytale.component.dependency.Order;
 import com.hypixel.hytale.component.dependency.SystemDependency;
-import com.hypixel.hytale.component.ComponentType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -187,31 +185,6 @@ class RelationshipChangeSystemTest {
         }
     }
 
-    @Test
-    void dataComponentSetsAndRetargetsCarryTheInstanceTheSourceAlreadyHolds() {
-        try (var fixture = new StoreFixture()) {
-            var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var seatType = fixture.registry().registerComponent(Seat.class, Seat::new);
-            var mounted = types.registerRelationship(seatType, new SeatDataObserver(), RelationshipRules.single());
-            var observer = new SeatObserver(mounted, seatType);
-            fixture.registry().registerSystem(observer);
-            var rider = fixture.addEntity(new Position(1, 2), null);
-            var mount = fixture.addEntity(new Position(3, 4), null);
-            var spareMount = fixture.addEntity(new Position(5, 6), null);
-            var saddle = new Seat();
-            var replacement = new Seat();
-
-            relationships.addTarget(fixture.store(), rider, mounted, mount, saddle);
-            relationships.putTarget(fixture.store(), rider, mounted, mount, replacement);
-            relationships.retarget(fixture.store(), rider, mounted, mount, spareMount);
-            fixture.store().replaceComponent(rider, seatType, saddle);
-
-            assertEquals(List.of("added", "set", "retargeted", "set"), observer.kinds);
-            assertEquals(List.of(saddle, replacement, replacement, saddle), observer.data);
-            assertEquals(List.of(saddle, replacement), observer.oldData);
-        }
-    }
-
     private record Delivery(String kind, Ref<Object> source, Ref<Object> oldTarget, Ref<Object> target,
         StringBuilder oldData, StringBuilder data) { }
 
@@ -280,72 +253,5 @@ class RelationshipChangeSystemTest {
             assertEquals(1, relationships.getTargetCount(source, getRelationshipType()));
             assertEquals(1, relationships.getIncomingCount(target, getRelationshipType()));
         }
-    }
-    private static final class Seat implements Component<Object> {
-        @Override
-        public Seat clone() {
-            return new Seat();
-        }
-    }
-
-    /// Checks that the source already carries the delivered link data when the observer runs.
-    private static final class SeatObserver extends RelationshipChangeSystem<Object, Seat> {
-        private final ComponentType<Object, Seat> seatType;
-        private final List<String> kinds = new ArrayList<>();
-        private final List<Seat> data = new ArrayList<>();
-        private final List<Seat> oldData = new ArrayList<>();
-
-        private SeatObserver(
-            RelationshipType<Object, Seat> type,
-            ComponentType<Object, Seat> seatType
-        ) {
-            super(type);
-            this.seatType = seatType;
-        }
-
-        @Override
-        protected void onRelationshipAdded(
-            LinkedEntity<Object> source,
-            LinkedEntity<Object> target,
-            Seat seat,
-            Store<Object> store,
-            CommandBuffer<Object> buffer
-        ) {
-            record("added", store, source.reference(), seat);
-        }
-
-        @Override
-        protected void onRelationshipSet(
-            LinkedEntity<Object> source,
-            LinkedEntity<Object> target,
-            Seat previous,
-            Seat seat,
-            Store<Object> store,
-            CommandBuffer<Object> buffer
-        ) {
-            oldData.add(previous);
-            record("set", store, source.reference(), seat);
-        }
-
-        @Override
-        protected void onRelationshipRetargeted(
-            LinkedEntity<Object> source,
-            LinkedEntity<Object> oldTarget,
-            LinkedEntity<Object> target,
-            Seat seat,
-            Store<Object> store,
-            CommandBuffer<Object> buffer
-        ) {
-            record("retargeted", store, source.reference(), seat);
-        }
-
-        private void record(String kind, Store<Object> store, Ref<Object> source, Seat seat) {
-            assertSame(seat, store.getComponent(source, seatType));
-            kinds.add(kind);
-            data.add(seat);
-        }
-    }
-
-    private static final class SeatDataObserver extends RelationshipDataObserver<Object, Seat> {
     }
 }

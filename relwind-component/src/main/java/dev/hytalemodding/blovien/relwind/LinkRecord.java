@@ -154,7 +154,7 @@ final class LinkRecord {
         return cleanupDisposition;
     }
 
-    /// Null for a type whose data is a component, because Hytale saves that with the holder.
+    /// Null when the link carries no data.
     @Nullable
     BsonValue getPayload() {
         return payload;

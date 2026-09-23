@@ -7,9 +7,7 @@
 package dev.hytalemodding.blovien.relwind;
 
 import com.hypixel.hytale.component.CommandBuffer;
-import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentAccessor;
-import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import org.checkerframework.checker.nullness.compatqual.NonNullDecl;
@@ -86,9 +84,7 @@ final class RelationshipStorage {
         }
     }
 
-    /// Attaches the incoming side, stores the link data in its component when the type uses one, and
-    /// adds the target to the source's outgoing storage.
-    @SuppressWarnings({"rawtypes"})
+    /// Attaches the incoming side and adds the target with its link data to the source's outgoing storage.
     static <SOURCE, TARGET, LINK_DATA> void attachLink(
         Store<SOURCE> sourceStore,
         Store<TARGET> targetStore,
@@ -98,18 +94,12 @@ final class RelationshipStorage {
         @Nullable LINK_DATA data
     ) {
         addIncoming(targetStore, type, source, target);
-        ComponentType dataType = type.getDescriptor().getDataComponentType();
-        Object slotData = data;
-        if (dataType != null) {
-            storeLinkData(sourceStore, dataType, source, data);
-            slotData = null;
-        }
         var current = sourceStore.getComponent(source, type.getSourceType());
         if (current == null) {
-            var created = new OutgoingLink<SOURCE, TARGET>(target, slotData);
+            var created = new OutgoingLink<SOURCE, TARGET>(target, data);
             sourceStore.addComponent(source, type.getSourceType(), created);
         } else {
-            current.add(target, slotData);
+            current.add(target, data);
             sourceStore.replaceComponent(source, type.getSourceType(), current);
         }
     }
@@ -134,49 +124,12 @@ final class RelationshipStorage {
         }
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    static <SOURCE> void storeLinkData(
-        Store<SOURCE> sourceStore,
-        ComponentType dataType,
-        Ref<SOURCE> source,
-        @Nullable Object data
-    ) {
-        var attached = sourceStore.getComponent(source, dataType);
-        var component = (Component<SOURCE>) data;
-        RelationshipDataObserver.beginCommandWrite();
-        try {
-            if (component == null) {
-                if (attached != null) {
-                    sourceStore.removeComponent(source, dataType);
-                }
-            } else if (attached == null) {
-                sourceStore.addComponent(source, dataType, component);
-            } else {
-                sourceStore.replaceComponent(source, dataType, component);
-            }
-        } finally {
-            RelationshipDataObserver.endCommandWrite();
-        }
-    }
-
     @Nullable
-    @SuppressWarnings({"unchecked", "rawtypes"})
     static <SOURCE, TARGET, LINK_DATA> LINK_DATA getLinkDataOf(
         GenericRelationshipType<SOURCE, TARGET, LINK_DATA> type,
-        Store<SOURCE> sourceStore,
-        Ref<SOURCE> source,
         Ref<TARGET> target,
         @Nullable OutgoingLink<SOURCE, TARGET> outgoing
     ) {
-        var dataClass = type.getDescriptor().linkDataClass();
-        ComponentType dataType = type.getDescriptor().getDataComponentType();
-        if (dataType == null) {
-            return outgoing == null
-                ? null : outgoing.getData(target, dataClass);
-        }
-        if (outgoing == null || !outgoing.contains(target)) {
-            return null;
-        }
-        return (LINK_DATA) sourceStore.getComponent(source, dataType);
+        return outgoing == null ? null : outgoing.getData(target, type.getDescriptor().linkDataClass());
     }
 }

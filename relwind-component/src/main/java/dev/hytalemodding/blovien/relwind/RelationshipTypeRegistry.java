@@ -8,11 +8,9 @@ package dev.hytalemodding.blovien.relwind;
 
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
-import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentRegistry;
 import com.hypixel.hytale.component.IComponentRegistry;
 import com.hypixel.hytale.component.ComponentType;
-import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.component.system.ISystem;
 import com.hypixel.hytale.component.system.QuerySystem;
@@ -36,7 +34,6 @@ import java.util.function.Supplier;
 /// and the persistence they use.
 /// Class-based registration accepts any data class. Per-link values must be immutable, including
 /// reachable state, because storage copies share them; see {@link GenericRelationshipType}.
-/// Data component registrations retain the native Component.clone contract.
 public final class RelationshipTypeRegistry<ECS_TYPE> {
     private static final ThreadLocal<Boolean> RELATIONSHIP_SYSTEM_CALLBACK_ACTIVE = ThreadLocal.withInitial(() -> false);
     private static final Object REGISTRY_ORDERING = new Object();
@@ -210,7 +207,7 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
     /// An id must be namespaced, in the `Group:Name` form.
     @Nonnull
     public RelationshipType<ECS_TYPE, Void> registerRelationship(RelationshipRules rules) {
-        return registerSameStore(null, Void.class, null, null, null, rules);
+        return registerSameStore(null, Void.class, null, rules);
     }
 
     @Nonnull
@@ -219,26 +216,13 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
         RelationshipRules rules
     ) {
         Objects.requireNonNull(linkDataClass, "linkDataClass");
-        return registerSameStore(null, linkDataClass, null, null, null, rules);
-    }
-
-    /// The rules must declare a single target, because Hytale keeps one component of a type per entity.
-    @Nonnull
-    public <LINK_DATA extends Component<ECS_TYPE>> RelationshipType<ECS_TYPE, LINK_DATA>
-        registerRelationship(
-        ComponentType<ECS_TYPE, LINK_DATA> dataComponentType,
-        RelationshipDataObserver<ECS_TYPE, LINK_DATA> observer,
-        RelationshipRules rules
-    ) {
-        Objects.requireNonNull(dataComponentType, "dataComponentType");
-        Objects.requireNonNull(observer, "observer");
-        return registerSameStore(null, getDataClass(dataComponentType), dataComponentType, observer, null, rules);
+        return registerSameStore(null, linkDataClass, null, rules);
     }
 
     @Nonnull
     public RelationshipType<ECS_TYPE, Void> registerRelationship(String id, RelationshipRules rules) {
         Objects.requireNonNull(id, "id");
-        return registerSameStore(id, Void.class, null, null, null, rules);
+        return registerSameStore(id, Void.class, null, rules);
     }
 
     /// A null codec leaves the saved links alone. They are not restored and a link change throws.
@@ -251,22 +235,7 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
     ) {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(linkDataClass, "linkDataClass");
-        return registerSameStore(id, linkDataClass, null, null, codec, rules);
-    }
-
-    /// Register `dataComponentType` with a codec first. Without one this call fails.
-    @Nonnull
-    public <LINK_DATA extends Component<ECS_TYPE>> RelationshipType<ECS_TYPE, LINK_DATA>
-        registerRelationship(
-        String id,
-        ComponentType<ECS_TYPE, LINK_DATA> dataComponentType,
-        RelationshipDataObserver<ECS_TYPE, LINK_DATA> observer,
-        RelationshipRules rules
-    ) {
-        Objects.requireNonNull(id, "id");
-        Objects.requireNonNull(dataComponentType, "dataComponentType");
-        Objects.requireNonNull(observer, "observer");
-        return registerSameStore(id, getDataClass(dataComponentType), dataComponentType, observer, null, rules);
+        return registerSameStore(id, linkDataClass, codec, rules);
     }
 
     /// `targetRegistry` must sit on a different ComponentRegistry than this one.
@@ -315,13 +284,11 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
     private <LINK_DATA> RelationshipType<ECS_TYPE, LINK_DATA> registerSameStore(
         @Nullable String id,
         Class<LINK_DATA> linkDataClass,
-        @Nullable ComponentType<ECS_TYPE, ? extends Component<ECS_TYPE>> dataComponentType,
-        @Nullable RelationshipDataObserver<ECS_TYPE, ? extends Component<ECS_TYPE>> dataObserver,
         @Nullable Codec<LINK_DATA> codec,
         RelationshipRules rules
     ) {
         var descriptor = new RelationshipDescriptor<ECS_TYPE, LINK_DATA>(
-            id, null, linkDataClass, dataComponentType, dataObserver, codec, Objects.requireNonNull(rules, "rules"));
+            id, null, linkDataClass, codec, Objects.requireNonNull(rules, "rules"));
         return (RelationshipType<ECS_TYPE, LINK_DATA>) registerDescriptor(descriptor);
     }
 
@@ -335,15 +302,8 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
     ) {
         Objects.requireNonNull(targetRegistry, "targetRegistry");
         var descriptor = new RelationshipDescriptor<>(
-            id, targetRegistry, linkDataClass, null, null, codec, Objects.requireNonNull(rules, "rules"));
+            id, targetRegistry, linkDataClass, codec, Objects.requireNonNull(rules, "rules"));
         return registerDescriptor(descriptor);
-    }
-
-    @Nonnull @SuppressWarnings("unchecked")
-    private static <ECS_TYPE, LINK_DATA extends Component<ECS_TYPE>> Class<LINK_DATA> getDataClass(
-        ComponentType<ECS_TYPE, LINK_DATA> dataComponentType
-    ) {
-        return (Class<LINK_DATA>) dataComponentType.getTypeClass();
     }
 
     @Nonnull
@@ -351,28 +311,14 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
         RelationshipDescriptor<TARGET, LINK_DATA> descriptor
     ) {
         var targetTypes = getTargetRegistry(descriptor);
-        ComponentType<ECS_TYPE, Component<ECS_TYPE>> dataComponentType = descriptor.getDataComponentType();
         var codec = descriptor.codec();
-        if (dataComponentType != null) {
-            if (descriptor.getCardinality() != RelationshipRules.Cardinality.SINGLE_TARGET) {
-                var label = descriptor.id() == null
-                    ? "runtime relationship type" : "Relationship type '" + descriptor.id() + "'";
-                throw new IllegalArgumentException(
-                    label + " must declare a single target to carry a data component");
-            }
-            dataComponentType.validateRegistry(componentRegistry);
-            dataComponentType.validate();
-            codec = getComponentCodec(dataComponentType);
-        }
-        validatePersistence(descriptor, codec, dataComponentType != null);
+        validatePersistence(descriptor, codec);
         if (targetTypes != this) {
             var tracker = getTracker();
             if (tracker != null) validateCascadingSource(descriptor, tracker.getStoreRuntime());
         }
         rejectRelationshipSystemCallback();
-        var registeredCodec = codec;
-        return executeWithBothHeld(targetTypes,
-            () -> registerHeld(descriptor, targetTypes, dataComponentType, registeredCodec));
+        return executeWithBothHeld(targetTypes, () -> registerHeld(descriptor, targetTypes, codec));
     }
 
     @Nonnull @SuppressWarnings("unchecked")
@@ -433,7 +379,6 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
     private <TARGET, LINK_DATA> GenericRelationshipType<ECS_TYPE, TARGET, LINK_DATA> registerHeld(
         RelationshipDescriptor<TARGET, LINK_DATA> descriptor,
         RelationshipTypeRegistry<TARGET> targetTypes,
-        @Nullable ComponentType<ECS_TYPE, Component<ECS_TYPE>> dataComponentType,
         @Nullable Codec<LINK_DATA> codec
     ) {
         if (closed) throw new IllegalStateException("Relationship types are closed");
@@ -446,10 +391,6 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
 
         beginRegistryChange();
         try {
-            // a refusal here leaves nothing behind
-            if (dataComponentType != null) {
-                rejectSharedDataComponent(descriptor, dataComponentType);
-            }
             @SuppressWarnings({"unchecked", "rawtypes"})
             ComponentType<ECS_TYPE, OutgoingLink<ECS_TYPE, TARGET>> sourceType =
                 registrar.registerComponent((Class) OutgoingLink.class, OutgoingLink::new);
@@ -457,17 +398,6 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
             ComponentType<TARGET, IncomingLinks<ECS_TYPE, TARGET>> incomingType =
                 targetTypes.registrar.registerComponent((Class) IncomingLinks.class, IncomingLinks::new);
             var type = newType(descriptor, sourceType, incomingType, codec);
-            // a refused observer leaves the registry as it was
-            if (dataComponentType != null) {
-                try {
-                    observeLinkData(type, dataComponentType, Objects.requireNonNull(
-                        descriptor.getDataObserver(), "A data component type is described with its observer"));
-                } catch (RuntimeException failure) {
-                    componentRegistry.unregisterComponent(sourceType);
-                    targetTypes.componentRegistry.unregisterComponent(incomingType);
-                    throw failure;
-                }
-            }
             if (descriptor.id() != null) {
                 types.put(descriptor.id(), type);
             } else {
@@ -517,7 +447,7 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
     }
 
     /// Each saved payload of multi-target link data carries its own version.
-    private void validatePersistence(RelationshipDescriptor<?, ?> descriptor, @Nullable Codec<?> codec, boolean dataComponent) {
+    private void validatePersistence(RelationshipDescriptor<?, ?> descriptor, @Nullable Codec<?> codec) {
         if (!descriptor.isPersistent()) {
             return;
         }
@@ -531,11 +461,6 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
         }
         if (descriptor.linkDataClass() == Void.class) {
             if (codec != null) throw new IllegalArgumentException("A payload codec requires a persistent type with link data");
-        } else if (dataComponent) {
-            if (codec == null) {
-                throw new IllegalArgumentException("Persistent relationship type '" + descriptor.id()
-                    + "' requires a codec on its data component type");
-            }
         } else if (descriptor.getCardinality() == RelationshipRules.Cardinality.MULTIPLE_TARGETS
             && codec != null && !isVersionedBuilderCodec(codec)) {
             throw new IllegalArgumentException(
@@ -560,63 +485,6 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
         } catch (ReflectiveOperationException failure) {
             throw new IllegalStateException("Could not inspect BuilderCodec versioning", failure);
         }
-    }
-
-    @Nullable @SuppressWarnings("unchecked")
-    private <LINK_DATA> Codec<LINK_DATA> getComponentCodec(ComponentType<ECS_TYPE, Component<ECS_TYPE>> dataComponentType) {
-        var lock = componentRegistry.getDataUpdateLock().readLock();
-        lock.lock();
-        try {
-            return (Codec<LINK_DATA>) componentRegistry._internal_getData().getComponentCodec(dataComponentType);
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    /// A data component type belongs to one relationship type, whatever class observes it. See ADR 0001.
-    private void rejectSharedDataComponent(
-        RelationshipDescriptor<?, ?> descriptor,
-        ComponentType<ECS_TYPE, Component<ECS_TYPE>> dataComponentType
-    ) {
-        var observed = getTypeCarryingDataIn(dataComponentType);
-        if (observed == null) return;
-        throw new IllegalArgumentException("Relationship type '" + observed.getDescriptor().id()
-            + "' already carries its link data in that component, so '" + descriptor.id() + "' cannot");
-    }
-
-    /// Hytale keeps one system per class. Two relationship types cannot share an observer class.
-    private void observeLinkData(
-        GenericRelationshipType<ECS_TYPE, ?, ?> type,
-        ComponentType<ECS_TYPE, Component<ECS_TYPE>> dataComponentType,
-        RelationshipDataObserver<ECS_TYPE, Component<ECS_TYPE>> observer
-    ) {
-        // registerSystem reads the component type off the observer
-        observer.observe(type, dataComponentType);
-        try {
-            registrar.registerSystem(observer);
-        } catch (RuntimeException failure) {
-            observer.release();
-            throw failure;
-        }
-    }
-
-    /// A registry holds few types and a registration is rare.
-    @Nullable
-    private GenericRelationshipType<ECS_TYPE, ?, ?> getTypeCarryingDataIn(
-        ComponentType<ECS_TYPE, Component<ECS_TYPE>> dataComponentType
-    ) {
-        for (var registered : getRegisteredTypes()) {
-            if (registered.getDescriptor().rawDataComponentType() == dataComponentType) return registered;
-        }
-        return null;
-    }
-
-    /// A later registration can use this observer class again.
-    private void releaseLinkData(GenericRelationshipType<ECS_TYPE, ?, ?> type) {
-        RelationshipDataObserver<ECS_TYPE, Component<ECS_TYPE>> observer = type.getDescriptor().getDataObserver();
-        if (observer == null) return;
-        componentRegistry.unregisterSystem(getSystemClass(observer));
-        observer.release();
     }
 
     /// Releases the type's storage on both registries. A type that is not registered is rejected.
@@ -644,7 +512,6 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
         try {
             type.getSourceType().validateRegistry(componentRegistry);
             type.getSourceType().validate();
-            releaseLinkData(type);
             if (persistence != null) persistence.onTypeUnregistering(type);
             unregisterDependentSystems(type);
             componentRegistry.unregisterComponent(type.getSourceType());

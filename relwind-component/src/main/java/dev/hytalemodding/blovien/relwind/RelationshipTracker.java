@@ -8,7 +8,6 @@ package dev.hytalemodding.blovien.relwind;
 
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.component.CommandBuffer;
-import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Holder;
 import com.hypixel.hytale.component.Ref;
@@ -712,11 +711,7 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
             unfile(link);
             return;
         }
-        // the Link holds this component instance while it is unresolved, and resolution passes it back
-        ComponentType dataType = link.type.getDescriptor().getDataComponentType();
-        link.data = dataType == null
-            ? outgoing.getData(link.targetRef, Object.class)
-            : getAttachedData(link, dataType, sourceHolder);
+        link.data = outgoing.getData(link.targetRef, Object.class);
     }
 
     /// Read from the holder while the source is leaving, and from its Store otherwise.
@@ -730,18 +725,6 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         assert link.sourceRef != null;
         Ref source = link.sourceRef;
         return (OutgoingLink) source.getStore().getComponent(source, sourceType);
-    }
-
-    /// Only a same-Store type carries its link data in a component.
-    @Nullable
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private Component<?> getAttachedData(Link link, ComponentType dataType, @Nullable Holder<?> sourceHolder) {
-        if (sourceHolder != null) {
-            return (Component<?>) sourceHolder.getComponent(dataType);
-        }
-        assert link.sourceRef != null;
-        Ref source = link.sourceRef;
-        return (Component<?>) source.getStore().getComponent(source, dataType);
     }
 
     /// One installation repairs both sides with a single command. Two installations repair each
@@ -763,7 +746,7 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
                 if (source.isValid() && target.isValid()) {
                     RelationshipCommands.remove(sourceStore, null, type, source, target, true, null, false);
                 } else if (sourceStore.isInThread()) {
-                    RelationshipLifecycle.detachAfterUnload(sourceStore, type, source, target,
+                    RelationshipLifecycle.detachLinkedEntity(sourceStore, type, source, target,
                         source.isValid() ? target : source);
                 }
             }
@@ -784,7 +767,7 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void detachAfterUnload(Store<ECS_TYPE> store, Link link, Ref<ECS_TYPE> unloaded) {
         assert link.sourceRef != null && link.targetRef != null;
-        RelationshipLifecycle.detachAfterUnload((Store) store, (GenericRelationshipType) link.type,
+        RelationshipLifecycle.detachLinkedEntity((Store) store, (GenericRelationshipType) link.type,
             (Ref) link.sourceRef, (Ref) link.targetRef, (Ref) unloaded);
     }
 
@@ -1000,7 +983,6 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
                 (Ref) (link.sourceRef == unloaded ? null : link.sourceRef), identityOf(link.sourceId),
                 (Ref) (link.targetRef == unloaded ? null : link.targetRef), identityOf(link.targetId), link.data)
             : null;
-        detachLinkData(link, unloaded);
         var persistence = link.type.getRelationshipTypeRegistry().getPersistence();
         if (!link.cascade && (persistence == null
             || !link.type.getDescriptor().isPersistent())) {
@@ -1022,30 +1004,6 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         } else {
             executeOnSource(link.sourceStore, () -> applyCleanup(link, notification));
         }
-    }
-
-    /// A cascading source is deleted whole and takes the component with it. A source that is away
-    /// keeps its component until it is removed itself.
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private void detachLinkData(Link link, Ref<?> unloaded) {
-        ComponentType dataType = link.type.getDescriptor().getDataComponentType();
-        Ref source = link.sourceRef;
-        if (dataType == null || link.cascade || source == null || source == unloaded || !source.isValid()) {
-            return;
-        }
-        Store store = source.getStore();
-        executeOnSource(store, () -> {
-            if (!source.isValid() || store.getComponent(source, dataType) == null) {
-                return;
-            }
-            // this removal announces the change itself
-            RelationshipDataObserver.beginCommandWrite();
-            try {
-                store.removeComponent(source, dataType);
-            } finally {
-                RelationshipDataObserver.endCommandWrite();
-            }
-        });
     }
 
     /// Every link filed here has its source in this installation.

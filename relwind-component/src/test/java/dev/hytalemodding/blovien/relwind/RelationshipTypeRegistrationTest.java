@@ -20,7 +20,6 @@ import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.component.AddReason;
-import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentRegistry;
 import com.hypixel.hytale.component.EmptyResourceStorage;
 import com.hypixel.hytale.component.Store;
@@ -163,75 +162,6 @@ class RelationshipTypeRegistrationTest {
     }
 
     @Test
-    void registeringADataComponentFixesTheLinkDataClassAndKeepsNoCodec() {
-        var relationshipTypes = new RelationshipTypeRegistry<>(componentRegistry);
-        var mountType = componentRegistry.registerComponent(MountData.class, MountData::new);
-
-        var mounted = relationshipTypes.registerRelationship(
-            mountType, new MountObserver(), RelationshipRules.single());
-
-        assertSame(MountData.class, mounted.getDescriptor().linkDataClass());
-        assertSame(mountType, mounted.getDescriptor().getDataComponentType());
-        assertNull(mounted.getDescriptor().codec());
-    }
-
-    @Test
-    void aDataComponentIsRejectedForATypeWithMultipleTargets() {
-        var relationshipTypes = new RelationshipTypeRegistry<>(componentRegistry);
-        var mountType = componentRegistry.registerComponent(MountData.class, MountData::new);
-
-        var multipleTargets = assertThrows(IllegalArgumentException.class,
-            () -> relationshipTypes.registerRelationship(
-                mountType, new MountObserver(), RelationshipRules.multiple()));
-
-        assertTrue(multipleTargets.getMessage().contains("single target"));
-    }
-
-    @Test
-    void aDataComponentBelongsToOneRelationshipTypeWhateverClassObservesIt() {
-        var relationshipTypes = new RelationshipTypeRegistry<>(componentRegistry);
-        var mountType = componentRegistry.registerComponent(MountData.class, MountData::new);
-        relationshipTypes.registerRelationship(
-            mountType, new MountObserver(), RelationshipRules.single());
-
-        var shared = assertThrows(IllegalArgumentException.class,
-            () -> relationshipTypes.registerRelationship(
-                mountType, new OtherMountObserver(), RelationshipRules.single()));
-
-        assertTrue(shared.getMessage().contains("already carries"));
-    }
-
-    @Test
-    void aPersistentDataComponentWithoutACodecIsRejected() {
-        var relationshipTypes = new RelationshipTypeRegistry<>(componentRegistry);
-        var withoutCodec = componentRegistry.registerComponent(MountData.class, MountData::new);
-
-        var rejected = assertThrows(IllegalArgumentException.class,
-            () -> relationshipTypes.registerRelationship(
-                "relwind:test/mounted",
-                withoutCodec,
-                new MountObserver(),
-                RelationshipRules.single()));
-
-        assertTrue(rejected.getMessage().contains("relwind:test/mounted"));
-        assertTrue(rejected.getMessage().contains("codec"));
-    }
-
-    @Test
-    void aPersistentDataComponentWithACodecIsAccepted() {
-        var relationshipTypes = new RelationshipTypeRegistry<>(componentRegistry);
-        var withCodec = componentRegistry.registerComponent(MountData.class, "RelwindTestMount", MountData.CODEC);
-
-        var accepted = relationshipTypes.registerRelationship(
-            "relwind:test/seated",
-            withCodec,
-            new MountObserver(),
-            RelationshipRules.single());
-
-        assertSame(withCodec, accepted.getDescriptor().getDataComponentType());
-    }
-
-    @Test
     void registeringAPersistentTypeRequiresANamespacedId() {
         var relationshipTypes = new RelationshipTypeRegistry<>(componentRegistry);
         var namespaced = relationshipTypes.registerRelationship(
@@ -337,7 +267,6 @@ class RelationshipTypeRegistrationTest {
         assertEquals(RelationshipRules.Cardinality.SINGLE_TARGET, type.getDescriptor().getCardinality());
         assertSame(Void.class, type.getDescriptor().linkDataClass());
         assertNull(type.getDescriptor().codec());
-        assertNull(type.getDescriptor().getDataComponentType());
         assertEquals(RelationshipRules.Survival.REMOVE, type.getDescriptor().getTransfer());
         assertEquals(RelationshipRules.Survival.REMOVE, type.getDescriptor().getTemporaryDeactivation());
         assertEquals(RelationshipRules.TargetDeletion.PRESERVE_SOURCE, type.getDescriptor().getTargetDeletion());
@@ -609,28 +538,6 @@ class RelationshipTypeRegistrationTest {
             .append(new KeyedCodec<>("Value", Codec.INTEGER), (data, value) -> data.value = value, data -> data.value)
             .add()
             .build();
-    }
-
-    static final class MountObserver extends RelationshipDataObserver<Object, MountData> {
-    }
-
-    static final class OtherMountObserver extends RelationshipDataObserver<Object, MountData> {
-    }
-
-    static final class MountData implements Component<Object> {
-        static final BuilderCodec<MountData> CODEC = BuilderCodec.builder(MountData.class, MountData::new)
-            .append(new KeyedCodec<>("Seat", Codec.INTEGER), (data, seat) -> data.seat = seat, data -> data.seat)
-            .add()
-            .build();
-
-        int seat;
-
-        @Override
-        public MountData clone() {
-            var copy = new MountData();
-            copy.seat = seat;
-            return copy;
-        }
     }
 
     static final class SlotData {

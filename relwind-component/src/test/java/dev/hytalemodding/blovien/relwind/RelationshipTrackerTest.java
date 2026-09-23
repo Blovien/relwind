@@ -13,7 +13,6 @@ import static dev.hytalemodding.blovien.relwind.RelationshipTestFixtures.*;
 import com.hypixel.hytale.component.AddReason;
 import com.hypixel.hytale.component.Archetype;
 import com.hypixel.hytale.component.CommandBuffer;
-import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentRegistry;
 import com.hypixel.hytale.component.EmptyResourceStorage;
 import com.hypixel.hytale.component.Ref;
@@ -872,43 +871,33 @@ class RelationshipTrackerTest {
     }
 
     @Test
-    void aRetainedLinkKeepsTheDataComponentAndResolutionReusesThatInstance() {
+    void aRetainedLinkKeepsItsDataAndResolutionReusesThatInstance() {
         try (var fixture = new Fixture()) {
-            var saddleType = fixture.registry.registerComponent(Saddle.class, Saddle::new);
-            var type = fixture.types.registerRelationship(
-                saddleType,
-                new SaddleObserver(),
-                RelationshipRules.single().retainOnDeactivation());
+            var type = fixture.types.registerRelationship(Saddle.class, RelationshipRules.single().retainOnDeactivation());
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
-            var saddle = new Saddle();
+            var saddle = new Saddle(1);
             relationships.addTarget(fixture.firstStore, source.ref(), type, target.ref(), saddle);
 
             var holder = fixture.park(target, UnloadReason.DEACTIVATION);
 
             assertEquals(0, relationships.getTargetCount(source.ref(), type));
-            assertSame(saddle, fixture.firstStore.getComponent(source.ref(), saddleType));
             assertSame(saddle, fixture.tracker.getUnresolvedLinkData(type, source.ref(), target.ref()));
 
             var returned = fixture.load(target.id(), holder, fixture.firstStore);
 
             assertEquals(1, relationships.getTargetCount(source.ref(), type));
-            assertSame(saddle, fixture.firstStore.getComponent(source.ref(), saddleType));
             assertSame(saddle, relationships.getData(source.ref(), type, returned));
         }
     }
 
     @Test
-    void aPolicyRemovalDetachesTheDataComponentAndAnnouncesTheRemovedInstance() {
+    void aPolicyRemovalAnnouncesTheRemovedLinkData() {
         try (var fixture = new Fixture()) {
-            var saddleType = fixture.registry.registerComponent(Saddle.class, Saddle::new);
-            var type = fixture.types.registerRelationship(
-                saddleType,
-                new SaddleObserver(),
-                RelationshipRules.single().retainOnTransfer());
+            var type = fixture.types.registerRelationship(Saddle.class, RelationshipRules.single().retainOnTransfer());
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
-            var saddle = new Saddle();
+            var saddle = new Saddle(1);
             relationships.addTarget(fixture.firstStore, source.ref(), type, target.ref(), saddle);
             var removed = new java.util.ArrayList<Saddle>();
             fixture.registry.registerSystem(new RelationshipChangeSystem<Object, Saddle>(type) {
@@ -928,20 +917,10 @@ class RelationshipTrackerTest {
 
             assertFalse(fixture.tracker.contains(type, source.id(), target.id()));
             assertEquals(java.util.List.of(saddle), removed);
-            assertNull(fixture.firstStore.getComponent(source.ref(), saddleType));
         }
     }
 
-    /// Link data of a single target type, carried by a component on the source.
-    private static final class Saddle implements Component<Object> {
-        private int seat;
-
-        @Override
-        public Saddle clone() {
-            var copy = new Saddle();
-            copy.seat = seat;
-            return copy;
-        }
+    private record Saddle(int seat) {
     }
 
     private static final class RemoveOnAdd extends com.hypixel.hytale.component.system.RefChangeSystem<Object, OutgoingLink<Object, Object>> {
@@ -1172,8 +1151,5 @@ class RelationshipTrackerTest {
             assertSame(anchor, relationships.getData(returned, anchoredTo, block));
             assertEquals(1, relationships.getIncomingCount(block, anchoredTo));
         }
-    }
-
-    private static final class SaddleObserver extends RelationshipDataObserver<Object, Saddle> {
     }
 }

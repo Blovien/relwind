@@ -13,55 +13,33 @@ import javax.annotation.Nullable;
 
 import java.util.Objects;
 
-/// Handles linked entity unload, deletion and restoration, and a link data component change.
+/// Handles linked entity unload, deletion and restoration.
 final class RelationshipLifecycle {
     private RelationshipLifecycle() {
     }
 
-    /// The link may come back. The source keeps its data component.
-    static <ECS_TYPE> void detachAfterUnload(
+    /// Detaches the link from whichever linked entity is still loaded.
+    static <ECS_TYPE> void detachLinkedEntity(
         Store<ECS_TYPE> store,
         GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type,
         Ref<ECS_TYPE> source,
         Ref<ECS_TYPE> target,
-        Ref<ECS_TYPE> unloaded
-    ) {
-        detachLinkedEntity(store, type, source, target, unloaded, false);
-    }
-
-    /// The link is over. A source that survives loses its data component.
-    static <ECS_TYPE> void detachAfterDeletion(
-        Store<ECS_TYPE> store,
-        GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type,
-        Ref<ECS_TYPE> source,
-        Ref<ECS_TYPE> target,
-        Ref<ECS_TYPE> deleted
-    ) {
-        detachLinkedEntity(store, type, source, target, deleted, true);
-    }
-
-    private static <ECS_TYPE> void detachLinkedEntity(
-        Store<ECS_TYPE> store,
-        GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type,
-        Ref<ECS_TYPE> source,
-        Ref<ECS_TYPE> target,
-        Ref<ECS_TYPE> unloaded,
-        boolean linkEnds
+        Ref<ECS_TYPE> detached
     ) {
         store.assertThread();
         store.assertWriteProcessing();
         Objects.requireNonNull(type, "type").validate(store);
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(target, "target");
-        Objects.requireNonNull(unloaded, "unloaded");
-        if (source != unloaded && target != unloaded) {
-            throw new IllegalArgumentException("Unloaded reference is not a linked entity of this relationship");
+        Objects.requireNonNull(detached, "detached");
+        if (source != detached && target != detached) {
+            throw new IllegalArgumentException("Detached reference is not a linked entity of this relationship");
         }
         var command = RelationshipAccessSystem.forStoreCommand(store);
         // no record update and no announcement here, because the tracker already recorded the
         // unload and the deletion path announces it
         RelationshipCommands.finish(command, command, true,
-            () -> detachRemainingLinkedEntity(store, type, source, target, unloaded, linkEnds),
+            () -> detachRemainingLinkedEntity(store, type, source, target, detached),
             () -> { },
             () -> { });
     }
@@ -71,88 +49,20 @@ final class RelationshipLifecycle {
         GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type,
         Ref<ECS_TYPE> source,
         Ref<ECS_TYPE> target,
-        Ref<ECS_TYPE> unloaded,
-        boolean linkEnds
+        Ref<ECS_TYPE> detached
     ) {
-        if (source != unloaded && source.isValid()) {
+        if (source != detached && source.isValid()) {
             var outgoing = store.getComponent(source, type.getSourceType());
             if (outgoing != null && outgoing.contains(target)) {
-                // a link that can still come back keeps its data component for resolution to reuse
-                var dataType = linkEnds ? type.getDescriptor().getDataComponentType() : null;
-                if (dataType != null) RelationshipStorage.storeLinkData(store, dataType, source, null);
                 RelationshipStorage.removeOutgoingTarget(store, type, source, target, outgoing);
             }
         }
-        if (target != unloaded && target.isValid()) {
+        if (target != detached && target.isValid()) {
             var incoming = store.getComponent(target, type.getIncomingType());
             if (incoming != null) {
                 incoming.remove(source);
             }
         }
-    }
-
-    /// The component already holds the new value.
-    static <ECS_TYPE, LINK_DATA> void onLinkDataReplaced(
-        Store<ECS_TYPE> store,
-        GenericRelationshipType<ECS_TYPE, ECS_TYPE, LINK_DATA> type,
-        Ref<ECS_TYPE> source,
-        @Nullable LINK_DATA oldData,
-        @Nullable LINK_DATA data
-    ) {
-        store.assertThread();
-        if (!source.isValid()) {
-            return;
-        }
-        var outgoing = store.getComponent(source, type.getSourceType());
-        var target = outgoing == null ? null : outgoing.getTarget();
-        if (target == null) {
-            return;
-        }
-        var tracker = type.getRelationshipTypeRegistry().getTracker();
-        var command = RelationshipAccessSystem.forStoreCommand(store);
-        RelationshipCommands.finish(command, command, true,
-            () -> { },
-            () -> {
-                updateTracker(store, type, tracker, source, target);
-                updatePersistence(store, type, tracker, source, target);
-            },
-            () -> RelationshipCommands.onChanged(store, type, tracker, RelationshipChangeSystem.Kind.SET,
-                source, target, null, oldData, data));
-    }
-
-    private static <ECS_TYPE, LINK_DATA> void updateTracker(
-        Store<ECS_TYPE> store,
-        GenericRelationshipType<ECS_TYPE, ECS_TYPE, LINK_DATA> type,
-        @Nullable RelationshipTracker<ECS_TYPE, ?> tracker,
-        Ref<ECS_TYPE> source,
-        Ref<ECS_TYPE> target
-    ) {
-        if (tracker == null) {
-            return;
-        }
-        var outgoing = source.isValid() ? store.getComponent(source, type.getSourceType()) : null;
-        if (outgoing != null && outgoing.contains(target)) {
-            tracker.onLinked(type, source, target);
-        } else {
-            tracker.onUnlinked(type, source, target);
-        }
-    }
-
-    private static <ECS_TYPE, LINK_DATA> void updatePersistence(
-        Store<ECS_TYPE> store,
-        GenericRelationshipType<ECS_TYPE, ECS_TYPE, LINK_DATA> type,
-        @Nullable RelationshipTracker<ECS_TYPE, ?> tracker,
-        Ref<ECS_TYPE> source,
-        Ref<ECS_TYPE> target
-    ) {
-        var persistence = type.getRelationshipTypeRegistry().getPersistence();
-        if (tracker == null || persistence == null || !source.isValid()) {
-            return;
-        }
-        var outgoing = store.getComponent(source, type.getSourceType());
-        boolean present = outgoing != null && outgoing.contains(target);
-        persistence.synchronize(type, source, target, present,
-            present ? RelationshipStorage.getLinkDataOf(type, store, source, target, outgoing) : null);
     }
 
     /// Takes the source command module first and the target second, the order a bridge command uses.

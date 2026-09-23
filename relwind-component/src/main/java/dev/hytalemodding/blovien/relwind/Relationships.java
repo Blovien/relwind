@@ -8,7 +8,6 @@ package dev.hytalemodding.blovien.relwind;
 
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.ComponentAccessor;
-import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 
@@ -85,8 +84,8 @@ public final class Relationships implements AutoCloseable {
     }
 
     /// Inserts or replaces link data and announces the change. Per-link data must be immutable:
-    /// pass a replacement value instead of editing a value returned by a read. Native data
-    /// components retain their own copy contract. Reacquire data obtained before this call.
+    /// pass a replacement value instead of editing a value returned by a read. Reacquire data
+    /// obtained before this call.
     /// @throws IllegalStateException if the type carries no link data, or a single target source
     /// already holds another target
     public <SOURCE, TARGET, LINK_DATA> void putTarget(
@@ -301,7 +300,6 @@ public final class Relationships implements AutoCloseable {
     }
 
     @Nullable
-    @SuppressWarnings({"unchecked", "rawtypes"})
     public <SOURCE, TARGET, LINK_DATA> LINK_DATA getData(
         Ref<SOURCE> source,
         GenericRelationshipType<SOURCE, TARGET, LINK_DATA> type,
@@ -314,14 +312,7 @@ public final class Relationships implements AutoCloseable {
         if (outgoing == null) {
             return null;
         }
-        ComponentType dataType = type.getDescriptor().getDataComponentType();
-        if (dataType == null) {
-            return outgoing.getData(target, type.getDescriptor().linkDataClass());
-        }
-        if (!outgoing.contains(target)) {
-            return null;
-        }
-        return (LINK_DATA) source.getStore().getComponent(source, dataType);
+        return outgoing.getData(target, type.getDescriptor().linkDataClass());
     }
 
     public <SOURCE, TARGET> int getIncomingCount(Ref<TARGET> target, GenericRelationshipType<SOURCE, TARGET, ?> type) {

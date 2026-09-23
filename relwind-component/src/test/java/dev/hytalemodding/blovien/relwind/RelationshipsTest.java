@@ -511,8 +511,7 @@ class RelationshipsTest {
         var registry = new ComponentRegistry<Object>();
         try {
             var types = new RelationshipTypeRegistry<>(registry);
-            var seatType = registry.registerComponent(Seat.class, Seat::new);
-            var mounted = types.registerRelationship(seatType, new SeatObserver(), RelationshipRules.single());
+            var mounted = types.registerRelationship(Seat.class, RelationshipRules.single());
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
             var rider = spawned(store);
             var mount = spawned(store);
@@ -695,11 +694,7 @@ class RelationshipsTest {
         }
     }
 
-    private static final class Seat implements Component<Object> {
-        @Override
-        public Seat clone() {
-            return new Seat();
-        }
+    private record Seat() {
     }
 
     private record FollowData(String distance) {
@@ -978,8 +973,5 @@ class RelationshipsTest {
             relationships.addTarget(world.blockStore(), otherBlock, touches, block);
             assertEquals(1, relationships.getTargetCount(otherSource, follows));
         }
-    }
-
-    private static final class SeatObserver extends RelationshipDataObserver<Object, Seat> {
     }
 }

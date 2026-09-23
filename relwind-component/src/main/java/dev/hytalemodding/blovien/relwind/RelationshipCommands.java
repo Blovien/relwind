@@ -9,7 +9,6 @@ package dev.hytalemodding.blovien.relwind;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.ComponentAccessor;
 import com.hypixel.hytale.component.ComponentRegistry;
-import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 
@@ -172,15 +171,10 @@ final class RelationshipCommands {
         }
         var outgoing = sourceStore.getComponent(source, type.getSourceType());
         if (outgoing != null && outgoing.contains(target)) {
-            LINK_DATA oldData = RelationshipStorage.getLinkDataOf(type, sourceStore, source, target, outgoing);
+            LINK_DATA oldData = RelationshipStorage.getLinkDataOf(type, target, outgoing);
             Runnable storage = () -> {
-                ComponentType dataType = type.getDescriptor().getDataComponentType();
-                if (dataType != null) {
-                    RelationshipStorage.storeLinkData(sourceStore, dataType, source, data);
-                } else {
-                    outgoing.setData(target, data);
-                    sourceStore.replaceComponent(source, type.getSourceType(), outgoing);
-                }
+                outgoing.setData(target, data);
+                sourceStore.replaceComponent(source, type.getSourceType(), outgoing);
             };
             Runnable record = () ->
                 recordLinked(targetStore, type, source, target, data, same, sourceTracker);
@@ -250,13 +244,9 @@ final class RelationshipCommands {
             }
             throw newMissingLinkException(type);
         }
-        LINK_DATA data = RelationshipStorage.getLinkDataOf(type, sourceStore, source, target, outgoing);
+        LINK_DATA data = RelationshipStorage.getLinkDataOf(type, target, outgoing);
         Runnable storage = () -> {
             RelationshipStorage.removeIncoming(targetStore, type, source, target);
-            ComponentType dataType = type.getDescriptor().getDataComponentType();
-            if (dataType != null) {
-                RelationshipStorage.storeLinkData(sourceStore, dataType, source, null);
-            }
             RelationshipStorage.removeOutgoingTarget(sourceStore, type, source, target, outgoing);
         };
         Runnable record = () -> {
@@ -349,7 +339,7 @@ final class RelationshipCommands {
             throw new IllegalStateException("Destination is already linked for relationship type '"
                 + type.getDescriptor().id() + "'");
         }
-        LINK_DATA data = RelationshipStorage.getLinkDataOf(type, sourceStore, source, oldTarget, outgoing);
+        LINK_DATA data = RelationshipStorage.getLinkDataOf(type, oldTarget, outgoing);
         Runnable storage = () -> {
             RelationshipStorage.addIncoming(targetStore, type, source, newTarget);
             RelationshipStorage.removeIncoming(targetStore, type, source, oldTarget);

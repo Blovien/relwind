@@ -7,8 +7,6 @@
 package dev.hytalemodding.blovien.relwind;
 
 import com.hypixel.hytale.codec.Codec;
-import com.hypixel.hytale.component.Component;
-import com.hypixel.hytale.component.ComponentType;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -21,8 +19,6 @@ record RelationshipDescriptor<TARGET, LINK_DATA>(
     @Nullable String id,
     @Nullable RelationshipTypeRegistry<TARGET> targetTypes,
     Class<LINK_DATA> linkDataClass,
-    @Nullable ComponentType<?, ?> rawDataComponentType,
-    @Nullable RelationshipDataObserver<?, ?> rawDataObserver,
     @Nullable Codec<LINK_DATA> codec,
     RelationshipRules rules
 ) {
@@ -34,17 +30,6 @@ record RelationshipDescriptor<TARGET, LINK_DATA>(
     /// True when the type has an id, because only a named type is saved.
     boolean isPersistent() {
         return id != null;
-    }
-
-    /// Null when the link data lives in the outgoing storage instead of a component.
-    @Nullable @SuppressWarnings("unchecked")
-    <ECS_TYPE> ComponentType<ECS_TYPE, Component<ECS_TYPE>> getDataComponentType() {
-        return (ComponentType<ECS_TYPE, Component<ECS_TYPE>>) rawDataComponentType;
-    }
-
-    @Nullable @SuppressWarnings("unchecked")
-    <ECS_TYPE> RelationshipDataObserver<ECS_TYPE, Component<ECS_TYPE>> getDataObserver() {
-        return (RelationshipDataObserver<ECS_TYPE, Component<ECS_TYPE>>) rawDataObserver;
     }
 
     @Nonnull
