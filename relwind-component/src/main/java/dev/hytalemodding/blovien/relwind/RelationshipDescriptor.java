@@ -36,6 +36,10 @@ record RelationshipDescriptor<TARGET, LINK_DATA>(
         return traits.isExclusive();
     }
 
+    boolean isSymmetric() {
+        return traits.isSymmetric();
+    }
+
     @Nonnull
     RelationshipTraits.Survival getTransfer() {
         return traits.getTransfer();

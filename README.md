@@ -20,6 +20,7 @@ Other features are the following:
 - **Link reads:** `hasTarget` checks one loaded link. `forEachLink` and `forEachIncomingLink` visit loaded links across relationship types, including bridge types, with their type and data.
 - **Clear targets:** `clearTargets` removes a source's loaded and away links of one type. A command buffer queues the clear until it drains.
 - **Exclusive types:** `putTarget` replaces the current target and its data, including a target that is away. `addTarget` rejects a second target.
+- **Symmetric types:** `symmetric()` keeps twin links and their data together when a command adds, changes or removes a link.
 - **Lifecycle traits:** choose whether links survive transfers and temporary deactivation, and whether deleting a target also deletes its linked sources.
 - **Persistence:** named relationship types save their links; unnamed types remain in memory. Retained links can remain unresolved while a linked entity is unavailable.
 - **ECS integration:** native command buffers and relationship-aware ticking, change, event, and lifecycle systems.

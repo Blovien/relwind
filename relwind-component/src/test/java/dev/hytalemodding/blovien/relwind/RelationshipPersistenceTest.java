@@ -51,6 +51,8 @@ import org.bson.BsonJavaScriptWithScope;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -360,6 +362,174 @@ class RelationshipPersistenceTest {
             RelationshipChangeSystem.ChangeEvent<Object, Slot> change) {
             changes.add(change);
         }
+    }
+
+    @Test
+    void aSymmetricPairSavesOneRecordOnEachSource() {
+        try (var fixture = new Fixture()) {
+            var sourceId = UUID.randomUUID();
+            var targetId = UUID.randomUUID();
+            var source = fixture.add(sourceId);
+            var target = fixture.add(targetId);
+            var type = fixture.types.registerRelationship("relwind:test/symmetric",
+                RelationshipTraits.defaults().symmetric().retainOnDeactivation());
+
+            relationships.addTarget(fixture.store, source, type, target);
+
+            var sourceRecords = fixture.store.getComponent(source, fixture.persistence.getComponentType()).getRecords();
+            var targetRecords = fixture.store.getComponent(target, fixture.persistence.getComponentType()).getRecords();
+            assertEquals(1, sourceRecords.size());
+            assertEquals(1, targetRecords.size());
+            assertEquals(targetId, sourceRecords.getFirst().getTargetIdentity(Codec.UUID_BINARY));
+            assertEquals(sourceId, targetRecords.getFirst().getTargetIdentity(Codec.UUID_BINARY));
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"ADDED,false", "ADDED,true", "REMOVED,false", "REMOVED,true"})
+    void aSymmetricTwinEventKeepsIdentitiesAfterTheFirstObserverRemovesAnEntity(
+        RelationshipChangeSystem.Kind kind, boolean removeSource) {
+        try (var fixture = new Fixture()) {
+            var sourceId = UUID.randomUUID();
+            var targetId = UUID.randomUUID();
+            var source = fixture.add(sourceId);
+            var target = fixture.add(targetId);
+            var type = fixture.types.registerRelationship("relwind:test/symmetric-observer",
+                RelationshipTraits.defaults().symmetric());
+            seedSymmetricRemoval(kind, fixture.store, source, type, target);
+            var removed = selectedRef(removeSource, source, target);
+            var observer = new RemovingSymmetricObserver(kind, removed);
+            fixture.registry.registerSystem(observer);
+
+            changeSymmetricPair(kind, fixture.store, source, type, target);
+
+            assertEquals(false, removed.isValid());
+            assertEquals(2, observer.changes.size());
+            var twin = observer.changes.getLast();
+            assertEquals(targetId, twin.source.identity());
+            assertEquals(sourceId, twin.target.identity());
+            assertSame(availableRef(target), twin.source.reference());
+            assertSame(availableRef(source), twin.target.reference());
+        }
+    }
+
+    private static Ref<Object> selectedRef(boolean first, Ref<Object> source, Ref<Object> target) {
+        return first ? source : target;
+    }
+
+    private static Ref<Object> availableRef(Ref<Object> ref) {
+        return ref.isValid() ? ref : null;
+    }
+
+    private static void seedSymmetricRemoval(RelationshipChangeSystem.Kind kind, Store<Object> store,
+        Ref<Object> source, RelationshipType<Object, Void> type, Ref<Object> target) {
+        if (kind == RelationshipChangeSystem.Kind.REMOVED) relationships.addTarget(store, source, type, target);
+    }
+
+    private static void changeSymmetricPair(RelationshipChangeSystem.Kind kind, Store<Object> store,
+        Ref<Object> source, RelationshipType<Object, Void> type, Ref<Object> target) {
+        if (kind == RelationshipChangeSystem.Kind.ADDED) relationships.addTarget(store, source, type, target);
+        else relationships.removeTarget(store, source, type, target);
+    }
+
+    private static final class RemovingSymmetricObserver
+        extends WorldEventSystem<Object, RelationshipChangeSystem.ChangeEvent<Object, Void>> {
+        private final RelationshipChangeSystem.Kind kind;
+        private final Ref<Object> removed;
+        private final List<RelationshipChangeSystem.ChangeEvent<Object, Void>> changes = new ArrayList<>();
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private RemovingSymmetricObserver(RelationshipChangeSystem.Kind kind, Ref<Object> removed) {
+            super((Class) RelationshipChangeSystem.ChangeEvent.class);
+            this.kind = kind;
+            this.removed = removed;
+        }
+
+        @Override
+        public void handle(Store<Object> store, CommandBuffer<Object> commands,
+            RelationshipChangeSystem.ChangeEvent<Object, Void> change) {
+            if (change.kind != kind) return;
+            changes.add(change);
+            if (changes.size() == 1) commands.removeEntity(removed, RemoveReason.UNLOAD);
+        }
+    }
+
+    @Test
+    void restoringAsymmetricSavesDoesNotInventTheMissingTwin() {
+        var sourceId = UUID.randomUUID();
+        var targetId = UUID.randomUUID();
+        BsonDocument sourceSave;
+        BsonDocument targetSave;
+        try (var original = new Fixture()) {
+            var source = original.add(sourceId);
+            var target = original.add(targetId);
+            var type = original.types.registerRelationship("relwind:test/symmetric",
+                RelationshipTraits.defaults().symmetric().retainOnDeactivation());
+            targetSave = original.registry.serialize(original.store.copySerializableEntity(target));
+            relationships.addTarget(original.store, source, type, target);
+            sourceSave = original.registry.serialize(original.store.copySerializableEntity(source));
+        }
+        try (var restored = new Fixture()) {
+            var type = restored.types.registerRelationship("relwind:test/symmetric",
+                RelationshipTraits.defaults().symmetric().retainOnDeactivation());
+            var source = restored.add(sourceSave);
+            var target = restored.add(targetSave);
+
+            restored.persistence.restore(source);
+            restored.persistence.restore(target);
+
+            assertEquals(true, relationships.hasTarget(source, type, target));
+            assertEquals(false, relationships.hasTarget(target, type, source));
+            assertEquals(1, relationships.getIncomingCount(target, type));
+            assertEquals(0, relationships.getIncomingCount(source, type));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void clearingASymmetricAwayPairRemovesItsTwinSavedRecordOnReturn(boolean keepHolder) {
+        try (var fixture = new Fixture()) {
+            var sourceId = UUID.randomUUID();
+            var targetId = UUID.randomUUID();
+            var source = fixture.add(sourceId);
+            var target = fixture.add(targetId);
+            var type = fixture.types.registerRelationship("relwind:test/symmetric",
+                RelationshipTraits.defaults().symmetric().retainOnDeactivation());
+            relationships.addTarget(fixture.store, source, type, target);
+            var holder = unloadSymmetricTarget(fixture, targetId, target, keepHolder);
+            var removedSources = new ArrayList<RelationshipChangeSystem.LinkedEntity<Object>>();
+            fixture.registry.registerSystem(new RelationshipChangeSystem<Object, Void>(type) {
+                @Override
+                protected void onRelationshipRemoved(LinkedEntity<Object> from, LinkedEntity<Object> to,
+                    Void data, Store<Object> store, CommandBuffer<Object> commands) {
+                    assertEquals(false, relationships.hasUnresolvedTargets(source, type));
+                    assertEquals(null, store.getComponent(source, fixture.persistence.getComponentType()));
+                    removedSources.add(from);
+                }
+            });
+
+            relationships.clearTargets(fixture.store, source, type);
+            var returned = fixture.add(fixture.registry.serialize(holder));
+            fixture.persistence.restore(returned);
+
+            assertEquals(0, relationships.getTargetCount(source, type));
+            assertEquals(0, relationships.getTargetCount(returned, type));
+            assertEquals(null, fixture.store.getComponent(returned, fixture.persistence.getComponentType()));
+            assertEquals(Set.of(new RelationshipChangeSystem.LinkedEntity<>(source, sourceId),
+                new RelationshipChangeSystem.LinkedEntity<>(null, targetId)), Set.copyOf(removedSources));
+            assertEquals(2, removedSources.size());
+        }
+    }
+
+    private static Holder<Object> unloadSymmetricTarget(Fixture fixture, UUID id, Ref<Object> target,
+        boolean keepHolder) {
+        if (keepHolder) {
+            var holder = fixture.store.removeEntity(target, RemoveReason.UNLOAD);
+            fixture.tracker.onEntityUnloaded(id, target, UnloadReason.DEACTIVATION, holder);
+            return holder;
+        }
+        fixture.tracker.onEntityUnloaded(id, target, UnloadReason.DEACTIVATION);
+        return fixture.store.removeEntity(target, RemoveReason.UNLOAD);
     }
 
     private record ClearedLink(Ref<Object> target, Object identity, int data) { }

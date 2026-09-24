@@ -8,6 +8,7 @@ package dev.hytalemodding.blovien.relwind;
 
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.StoreFixture;
 import com.hypixel.hytale.component.StoreFixture.Position;
@@ -28,6 +29,33 @@ import static org.junit.jupiter.api.Assertions.*;
 /// the link data that is current when its turn runs.
 class RelationshipChangeSystemTest {
     private static final Relationships relationships = new Relationships();
+
+    @Test
+    void dispatchKeepsTheOldTargetIdentityAfterItsReferenceBecomesUnavailable() {
+        try (var fixture = new StoreFixture()) {
+            var type = new RelationshipTypeRegistry<>(fixture.registry()).registerRelationship(RelationshipTraits.defaults());
+            var source = fixture.addEntity(new Position(1, 1), null);
+            var target = fixture.addEntity(new Position(2, 2), null);
+            var oldTarget = fixture.addEntity(new Position(3, 3), null);
+            var previousTargets = new ArrayList<RelationshipChangeSystem.LinkedEntity<Object>>();
+            fixture.registry().registerSystem(new RelationshipChangeSystem<Object, Void>(type) {
+                @Override
+                protected void onRelationshipRetargeted(LinkedEntity<Object> from, LinkedEntity<Object> previous,
+                    LinkedEntity<Object> to, Void data, Store<Object> store, CommandBuffer<Object> commands) {
+                    previousTargets.add(previous);
+                }
+            });
+            var event = new RelationshipChangeSystem.ChangeEvent<>(type, RelationshipChangeSystem.Kind.RETARGETED,
+                new RelationshipChangeSystem.LinkedEntity<>(source, "source"),
+                new RelationshipChangeSystem.LinkedEntity<>(target, "target"),
+                new RelationshipChangeSystem.LinkedEntity<>(oldTarget, "old target"), null, null);
+            fixture.store().removeEntity(oldTarget, RemoveReason.UNLOAD);
+
+            RelationshipChangeSystem.dispatch(fixture.store(), event);
+
+            assertEquals(List.of(new RelationshipChangeSystem.LinkedEntity<>(null, "old target")), previousTargets);
+        }
+    }
 
     @Test
     void unregisteringOneTypeKeepsTheSharedEventUntilItsLastObserverIsRemoved() {

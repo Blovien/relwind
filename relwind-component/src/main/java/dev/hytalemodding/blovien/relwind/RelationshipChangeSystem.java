@@ -100,7 +100,9 @@ public abstract class RelationshipChangeSystem<ECS_TYPE, LINK_DATA>
     static <ECS_TYPE, LINK_DATA> void dispatch(Store<ECS_TYPE> store, ChangeEvent<ECS_TYPE, LINK_DATA> changeEvent) {
         if (store.isShutdown() || store.getRegistry().isShutdown()) return;
         store.invoke(new ChangeEvent<>(changeEvent.type, changeEvent.kind, changeEvent.source.getAvailableIn(store),
-            changeEvent.target.getAvailableIn(store), changeEvent.oldTarget, changeEvent.oldData, changeEvent.data));
+            changeEvent.target.getAvailableIn(store),
+            changeEvent.oldTarget == null ? null : changeEvent.oldTarget.getAvailableIn(store),
+            changeEvent.oldData, changeEvent.data));
     }
 
     /// Do not keep the buffer. An ordinary command issued during dispatch is rejected.

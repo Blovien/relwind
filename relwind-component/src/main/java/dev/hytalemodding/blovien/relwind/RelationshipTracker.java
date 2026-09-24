@@ -714,6 +714,25 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
 
     record DroppedTarget<LINK_DATA>(Object identity, @Nullable LINK_DATA data) { }
 
+    @Nullable
+    synchronized <LINK_DATA> DroppedTarget<LINK_DATA> dropUnresolvedTwin(
+        GenericRelationshipType<ECS_TYPE, ECS_TYPE, LINK_DATA> type,
+        Ref<ECS_TYPE> source,
+        Object awayIdentity
+    ) {
+        var twin = find(type, keyOf(awayIdentity, source.getStore()), keyOfRef(source));
+        if (twin == null || twin.resolved) return null;
+        var data = type.getDescriptor().linkDataClass().cast(twin.data);
+        if (type.getDescriptor().isPersistent() && type.getRelationshipTypeRegistry().getPersistence() != null) {
+            cleanupPending.computeIfAbsent(twin.sourceId, ignored -> new ArrayList<>()).add(twin);
+            unfile(twin);
+            applyCleanup(twin);
+        } else {
+            unfile(twin);
+        }
+        return new DroppedTarget<>(awayIdentity, data);
+    }
+
     /// Copies the link data out before the component detaches. Resolution puts it back.
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void capture(Link link, Ref<ECS_TYPE> unloading, @Nullable Holder<ECS_TYPE> holder) {

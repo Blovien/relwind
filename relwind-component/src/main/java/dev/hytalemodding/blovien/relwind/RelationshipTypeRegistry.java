@@ -310,6 +310,7 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
     private <TARGET, LINK_DATA> GenericRelationshipType<ECS_TYPE, TARGET, LINK_DATA> registerDescriptor(
         RelationshipDescriptor<TARGET, LINK_DATA> descriptor
     ) {
+        validateSymmetric(descriptor);
         var targetTypes = getTargetRegistry(descriptor);
         var codec = descriptor.codec();
         validatePersistence(descriptor, codec);
@@ -319,6 +320,24 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
         }
         rejectRelationshipSystemCallback();
         return executeWithBothHeld(targetTypes, () -> registerHeld(descriptor, targetTypes, codec));
+    }
+
+    private static void validateSymmetric(RelationshipDescriptor<?, ?> descriptor) {
+        if (!descriptor.isSymmetric()) {
+            return;
+        }
+        if (descriptor.targetTypes() != null) {
+            throw new IllegalArgumentException("Relationship type '" + descriptor.id()
+                + "' cannot use symmetric() on a bridge type");
+        }
+        if (descriptor.isExclusive()) {
+            throw new IllegalArgumentException("Relationship type '" + descriptor.id()
+                + "' cannot combine symmetric() with exclusive()");
+        }
+        if (descriptor.getOnDeleteTarget() == RelationshipTraits.OnDeleteTarget.DELETE) {
+            throw new IllegalArgumentException("Relationship type '" + descriptor.id()
+                + "' cannot combine symmetric() with onDeleteTarget(DELETE)");
+        }
     }
 
     @Nonnull @SuppressWarnings("unchecked")
