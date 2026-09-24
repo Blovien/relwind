@@ -25,7 +25,7 @@ public interface StoreRuntime<ECS_TYPE> {
 
     void markNeedsSaving(Holder<ECS_TYPE> holder);
 
-    /// A type declaring `cascadeSource()` needs its sources in a Store kind that answers true.
+    /// A type declaring `onDeleteTarget(DELETE)` needs its sources in a Store kind that answers true.
     boolean isDeletionSupported();
 
     @Nonnull

@@ -227,7 +227,7 @@ class RelationshipRefChangeSystemTest {
     }
 
     private static GenericRelationshipType<Object, Object, Void> register(RelationshipTypeRegistry<Object> types) {
-        return types.registerRelationship(RelationshipRules.multiple());
+        return types.registerRelationship(RelationshipTraits.defaults());
     }
 
     private record Delivery(String phase, Integer oldValue, Integer newValue, Ref<Object> target) {

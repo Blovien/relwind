@@ -151,7 +151,7 @@ class RelationshipHolderEventSystemTest {
     void aHolderEventReadsTheLinkDataFromTheHolderThatCarriesTheOutgoingLink() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var mounted = types.registerRelationship(Saddle.class, RelationshipRules.single());
+            var mounted = types.registerRelationship(Saddle.class, RelationshipTraits.defaults().exclusive());
             var system = new MountedHolderEventSystem(fixture.positionType(), fixture.playerType(), mounted);
             fixture.registry().registerSystem(system);
             var rider = fixture.addEntity(new Position(1, 2), null);
@@ -238,7 +238,7 @@ class RelationshipHolderEventSystemTest {
     private static GenericRelationshipType<Object, Object, Void> register(RelationshipTypeRegistry<Object> types, String id) {
         return types.registerRelationship(
             id,
-            RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+            RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
     }
 
     public static final class RecordingHolderEventSystem

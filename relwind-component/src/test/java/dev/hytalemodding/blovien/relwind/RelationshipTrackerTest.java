@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-/// A link survives the transfer or the temporary unavailability of a linked entity as far as its rules
+/// A link survives the transfer or the temporary unavailability of a linked entity as far as its traits
 /// allow, and resolves again when that linked entity comes back.
 class RelationshipTrackerTest {
     private static final Relationships relationships = new Relationships();
@@ -56,7 +56,7 @@ class RelationshipTrackerTest {
                 return ids.get(ref);
             }, com.hypixel.hytale.codec.Codec.STRING, "ENTITIES", (context, id) -> false, peer -> null),
                 TestStoreRuntime.inline());
-            var type = types.registerRelationship(RelationshipRules.single().retainOnDeactivation());
+            var type = types.registerRelationship(RelationshipTraits.defaults().exclusive().retainOnDeactivation());
             var source = store.addEntity(Archetype.empty(), AddReason.SPAWN);
             var target = store.addEntity(Archetype.empty(), AddReason.SPAWN);
             var unnamed = store.addEntity(Archetype.empty(), AddReason.SPAWN);
@@ -79,7 +79,7 @@ class RelationshipTrackerTest {
     void policyObserversFinishBeforeTheirBufferedReactions() {
         try (var fixture = new Fixture()) {
             var type = fixture.registerRuntime(
-                RelationshipRules.Survival.REMOVE, RelationshipRules.Survival.RETAIN);
+                RelationshipTraits.Survival.REMOVE, RelationshipTraits.Survival.RETAIN);
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
             var replacement = fixture.add(fixture.firstStore);
@@ -115,7 +115,7 @@ class RelationshipTrackerTest {
     void anObserverFailureKeepsTheRemovalCommittedAndCancelsTheLaterObservers() {
         try (var fixture = new Fixture()) {
             var type = fixture.registerRuntime(
-                RelationshipRules.Survival.REMOVE, RelationshipRules.Survival.RETAIN);
+                RelationshipTraits.Survival.REMOVE, RelationshipTraits.Survival.RETAIN);
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
             var replacement = fixture.add(fixture.firstStore);
@@ -202,7 +202,7 @@ class RelationshipTrackerTest {
             TestPersistenceIdentity.of(ids::get, com.hypixel.hytale.codec.Codec.STRING),
             TestStoreRuntime.executing((store, task) -> tasks.add(task)));
         private final RelationshipType<Object, Void> type = types.registerRelationship(
-            RelationshipRules.single().retainOnDeactivation().cascadeSource());
+            RelationshipTraits.defaults().exclusive().retainOnDeactivation().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
         private final Store<Object> store = registry.addStore(new Object(), EmptyResourceStorage.get());
         private final Ref<Object> source = addEntity("source");
         private final Ref<Object> target = addEntity("target");
@@ -274,7 +274,7 @@ class RelationshipTrackerTest {
         try (var fixture = new Fixture()) {
             var type = fixture.types.registerRelationship(
                 StringBuilder.class,
-                RelationshipRules.single().retainOnTransfer());
+                RelationshipTraits.defaults().exclusive().retainOnTransfer());
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
             var data = new StringBuilder("retained");
@@ -332,9 +332,9 @@ class RelationshipTrackerTest {
     void declarationsPreserveUnknownWhenRetainedLinksHaveNoLiveMarker() {
         try (var fixture = new Fixture()) {
             var follows = fixture.registerRuntime(
-                RelationshipRules.Survival.RETAIN, RelationshipRules.Survival.RETAIN);
+                RelationshipTraits.Survival.RETAIN, RelationshipTraits.Survival.RETAIN);
             var owns = fixture.registerRuntime(
-                RelationshipRules.Survival.RETAIN, RelationshipRules.Survival.RETAIN);
+                RelationshipTraits.Survival.RETAIN, RelationshipTraits.Survival.RETAIN);
             var alice = fixture.add(fixture.firstStore);
             var bob = fixture.add(fixture.firstStore);
             var weapon = fixture.add(fixture.firstStore);
@@ -375,8 +375,8 @@ class RelationshipTrackerTest {
     @Test
     void aNegatedConditionTicksASourceWithoutTheLinkAndSkipsASourceWhoseReleasedLinkIsUnresolved() {
         try (var fixture = new Fixture()) {
-            var follows = fixture.types.registerRelationship(RelationshipRules.multiple());
-            var owns = fixture.types.registerRelationship(RelationshipRules.multiple().retainOnDeactivation());
+            var follows = fixture.types.registerRelationship(RelationshipTraits.defaults());
+            var owns = fixture.types.registerRelationship(RelationshipTraits.defaults().retainOnDeactivation());
             var leader = fixture.add(fixture.firstStore);
             var unarmed = fixture.add(fixture.firstStore);
             var armed = fixture.add(fixture.firstStore);
@@ -415,7 +415,7 @@ class RelationshipTrackerTest {
     void retargetCannotOverwriteAnExistingPendingDestination() {
         try (var fixture = new Fixture()) {
             var type = fixture.registerRuntime(
-                RelationshipRules.Survival.RETAIN, RelationshipRules.Survival.RETAIN);
+                RelationshipTraits.Survival.RETAIN, RelationshipTraits.Survival.RETAIN);
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
             var other = fixture.add(fixture.firstStore);
@@ -442,7 +442,7 @@ class RelationshipTrackerTest {
     void aPendingLinkStaysUnresolvedAndIsDroppedWhenTransferDoesNotRetain(LinkCommand command) {
         try (var fixture = new Fixture()) {
             var type = fixture.types.registerRelationship(
-                Object.class, RelationshipRules.single().retainOnDeactivation());
+                Object.class, RelationshipTraits.defaults().exclusive().retainOnDeactivation());
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
             var originalData = new Object();
@@ -477,7 +477,7 @@ class RelationshipTrackerTest {
     void aPendingLinkStaysUnresolvedAndReconnectsWhenTransferRetains(LinkCommand command) {
         try (var fixture = new Fixture()) {
             var type = fixture.types.registerRelationship(
-                Object.class, RelationshipRules.single().retainOnDeactivation().retainOnTransfer());
+                Object.class, RelationshipTraits.defaults().exclusive().retainOnDeactivation().retainOnTransfer());
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
             var originalData = new Object();
@@ -512,7 +512,7 @@ class RelationshipTrackerTest {
     void aRetainedSingleTargetRejectsANewTargetBeforeChangingStorage(LinkCommand command) {
         try (var fixture = new Fixture()) {
             var type = fixture.types.registerRelationship(
-                RelationshipRules.single().retainOnTransfer().retainOnDeactivation());
+                RelationshipTraits.defaults().exclusive().retainOnTransfer().retainOnDeactivation());
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
             var other = fixture.add(fixture.firstStore);
@@ -572,7 +572,7 @@ class RelationshipTrackerTest {
     void removalFromAReconnectCallbackIsRejectedAndKeepsTheRestoredAssociation() {
         try (var fixture = new Fixture()) {
             var type = fixture.registerRuntime(
-                RelationshipRules.Survival.RETAIN, RelationshipRules.Survival.RETAIN);
+                RelationshipTraits.Survival.RETAIN, RelationshipTraits.Survival.RETAIN);
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
             relationships.addTarget(fixture.firstStore, source.ref(), type, target.ref());
@@ -591,7 +591,7 @@ class RelationshipTrackerTest {
     void staleUnloadDoesNotDetachTheCurrentLinkedEntity() {
         try (var fixture = new Fixture()) {
             var type = fixture.registerRuntime(
-                RelationshipRules.Survival.RETAIN, RelationshipRules.Survival.REMOVE);
+                RelationshipTraits.Survival.RETAIN, RelationshipTraits.Survival.REMOVE);
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
             relationships.addTarget(fixture.firstStore, source.ref(), type, target.ref());
@@ -613,7 +613,7 @@ class RelationshipTrackerTest {
     void resolvingAnUnloadAsPendingIsRejectedAndLeavesItPending() {
         try (var fixture = new Fixture()) {
             var type = fixture.registerRuntime(
-                RelationshipRules.Survival.REMOVE, RelationshipRules.Survival.REMOVE);
+                RelationshipTraits.Survival.REMOVE, RelationshipTraits.Survival.REMOVE);
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
             relationships.addTarget(fixture.firstStore, source.ref(), type, target.ref());
@@ -632,7 +632,7 @@ class RelationshipTrackerTest {
     void removalFromAnAddCallbackIsRejectedAndTheFailedAddIsNotRecorded() {
         try (var fixture = new Fixture()) {
             var type = fixture.registerRuntime(
-                RelationshipRules.Survival.RETAIN, RelationshipRules.Survival.RETAIN);
+                RelationshipTraits.Survival.RETAIN, RelationshipTraits.Survival.RETAIN);
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
             fixture.registry.registerSystem(new RemoveOnAdd(type, target.ref()));
@@ -652,8 +652,8 @@ class RelationshipTrackerTest {
         var fixture = new Fixture();
         try {
             var type = fixture.registerRuntime(
-                RelationshipRules.Survival.RETAIN,
-                RelationshipRules.Survival.REMOVE
+                RelationshipTraits.Survival.RETAIN,
+                RelationshipTraits.Survival.REMOVE
             );
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
@@ -693,8 +693,8 @@ class RelationshipTrackerTest {
         var fixture = new Fixture();
         try {
             var type = fixture.registerRuntime(
-                RelationshipRules.Survival.RETAIN,
-                RelationshipRules.Survival.REMOVE
+                RelationshipTraits.Survival.RETAIN,
+                RelationshipTraits.Survival.REMOVE
             );
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
@@ -717,8 +717,8 @@ class RelationshipTrackerTest {
         var fixture = new Fixture();
         try {
             var type = fixture.registerRuntime(
-                RelationshipRules.Survival.REMOVE,
-                RelationshipRules.Survival.RETAIN
+                RelationshipTraits.Survival.REMOVE,
+                RelationshipTraits.Survival.RETAIN
             );
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
@@ -741,8 +741,8 @@ class RelationshipTrackerTest {
         var fixture = new Fixture();
         try {
             var type = fixture.registerRuntime(
-                RelationshipRules.Survival.RETAIN,
-                RelationshipRules.Survival.REMOVE
+                RelationshipTraits.Survival.RETAIN,
+                RelationshipTraits.Survival.REMOVE
             );
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
@@ -770,13 +770,13 @@ class RelationshipTrackerTest {
         var fixture = new Fixture();
         try {
             var transientTransfer = fixture.registerRuntime(
-                RelationshipRules.Survival.RETAIN,
-                RelationshipRules.Survival.REMOVE
+                RelationshipTraits.Survival.RETAIN,
+                RelationshipTraits.Survival.REMOVE
             );
             var persistentDeactivation = fixture.registerPersistent(
                 "saved-deactivation",
-                RelationshipRules.Survival.REMOVE,
-                RelationshipRules.Survival.RETAIN
+                RelationshipTraits.Survival.REMOVE,
+                RelationshipTraits.Survival.RETAIN
             );
             var source = fixture.add(fixture.firstStore);
             var firstTarget = fixture.add(fixture.firstStore);
@@ -803,8 +803,8 @@ class RelationshipTrackerTest {
         try {
             var type = fixture.registerPersistent(
                 "not-retained",
-                RelationshipRules.Survival.REMOVE,
-                RelationshipRules.Survival.REMOVE
+                RelationshipTraits.Survival.REMOVE,
+                RelationshipTraits.Survival.REMOVE
             );
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
@@ -825,8 +825,8 @@ class RelationshipTrackerTest {
         try {
             var type = fixture.registerPersistent(
                 "confirmed-removal",
-                RelationshipRules.Survival.RETAIN,
-                RelationshipRules.Survival.RETAIN
+                RelationshipTraits.Survival.RETAIN,
+                RelationshipTraits.Survival.RETAIN
             );
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
@@ -845,8 +845,8 @@ class RelationshipTrackerTest {
         var fixture = new Fixture();
         try {
             var type = fixture.registerRuntime(
-                RelationshipRules.Survival.RETAIN,
-                RelationshipRules.Survival.RETAIN
+                RelationshipTraits.Survival.RETAIN,
+                RelationshipTraits.Survival.RETAIN
             );
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
@@ -865,8 +865,8 @@ class RelationshipTrackerTest {
         var fixture = new Fixture();
         try {
             var type = fixture.registerRuntime(
-                RelationshipRules.Survival.RETAIN,
-                RelationshipRules.Survival.REMOVE
+                RelationshipTraits.Survival.RETAIN,
+                RelationshipTraits.Survival.REMOVE
             );
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
@@ -887,8 +887,8 @@ class RelationshipTrackerTest {
         var fixture = new Fixture();
         try {
             var type = fixture.registerRuntime(
-                RelationshipRules.Survival.RETAIN,
-                RelationshipRules.Survival.REMOVE
+                RelationshipTraits.Survival.RETAIN,
+                RelationshipTraits.Survival.REMOVE
             );
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
@@ -912,7 +912,7 @@ class RelationshipTrackerTest {
     @Test
     void aRetainedLinkKeepsItsDataAndResolutionReusesThatInstance() {
         try (var fixture = new Fixture()) {
-            var type = fixture.types.registerRelationship(Saddle.class, RelationshipRules.single().retainOnDeactivation());
+            var type = fixture.types.registerRelationship(Saddle.class, RelationshipTraits.defaults().exclusive().retainOnDeactivation());
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
             var saddle = new Saddle(1);
@@ -933,7 +933,7 @@ class RelationshipTrackerTest {
     @Test
     void aPolicyRemovalAnnouncesTheRemovedLinkData() {
         try (var fixture = new Fixture()) {
-            var type = fixture.types.registerRelationship(Saddle.class, RelationshipRules.single().retainOnTransfer());
+            var type = fixture.types.registerRelationship(Saddle.class, RelationshipTraits.defaults().exclusive().retainOnTransfer());
             var source = fixture.add(fixture.firstStore);
             var target = fixture.add(fixture.firstStore);
             var saddle = new Saddle(1);
@@ -1021,25 +1021,25 @@ class RelationshipTrackerTest {
 
         /// A runtime type takes no id.
         private RelationshipType<Object, Void> registerRuntime(
-            RelationshipRules.Survival transfer,
-            RelationshipRules.Survival deactivation
+            RelationshipTraits.Survival transfer,
+            RelationshipTraits.Survival deactivation
         ) {
-            return types.registerRelationship(policies(transfer, deactivation));
+            return types.registerRelationship(traits(transfer, deactivation));
         }
 
         private RelationshipType<Object, Void> registerPersistent(
             String name,
-            RelationshipRules.Survival transfer,
-            RelationshipRules.Survival deactivation
+            RelationshipTraits.Survival transfer,
+            RelationshipTraits.Survival deactivation
         ) {
-            return types.registerRelationship("relwind:test/" + name, policies(transfer, deactivation));
+            return types.registerRelationship("relwind:test/" + name, traits(transfer, deactivation));
         }
 
-        private static RelationshipRules policies(RelationshipRules.Survival transfer, RelationshipRules.Survival deactivation) {
-            var rules = RelationshipRules.multiple();
-            if (transfer == RelationshipRules.Survival.RETAIN) rules = rules.retainOnTransfer();
-            if (deactivation == RelationshipRules.Survival.RETAIN) rules = rules.retainOnDeactivation();
-            return rules;
+        private static RelationshipTraits traits(RelationshipTraits.Survival transfer, RelationshipTraits.Survival deactivation) {
+            var traits = RelationshipTraits.defaults();
+            if (transfer == RelationshipTraits.Survival.RETAIN) traits = traits.retainOnTransfer();
+            if (deactivation == RelationshipTraits.Survival.RETAIN) traits = traits.retainOnDeactivation();
+            return traits;
         }
 
         private Entity add(com.hypixel.hytale.component.Store<Object> store) {
@@ -1126,10 +1126,10 @@ class RelationshipTrackerTest {
         try (var linked = new LinkedInstallations()) {
             var anchoredTo = linked.entityTypes.registerRelationship(
                 linked.blockTypes,
-                RelationshipRules.multiple().retainOnDeactivation());
+                RelationshipTraits.defaults().retainOnDeactivation());
             var tetheredTo = linked.entityTypes.registerRelationship(
                 linked.blockTypes,
-                RelationshipRules.multiple());
+                RelationshipTraits.defaults());
             var source = linked.entity("source");
             var block = linked.block(1);
             relationships.addTarget(linked.world.entityStore(), source, anchoredTo, block);
@@ -1145,7 +1145,7 @@ class RelationshipTrackerTest {
             assertEquals(0, relationships.getTargetCount(source, tetheredTo));
 
             // the anchored condition is unknown while the block is away, and so is its negation
-            var follows = linked.entityTypes.registerRelationship(RelationshipRules.multiple());
+            var follows = linked.entityTypes.registerRelationship(RelationshipTraits.defaults());
             relationships.addTarget(linked.world.entityStore(), source, follows, linked.entity("companion"));
             var anchored = RelationshipQuery.exists(anchoredTo, Query.any());
             int anchoredMatches = relationships.fetch(source,
@@ -1170,7 +1170,7 @@ class RelationshipTrackerTest {
             var anchoredTo = linked.entityTypes.registerRelationship(
                 linked.blockTypes,
                 Anchor.class,
-                RelationshipRules.multiple().retainOnDeactivation());
+                RelationshipTraits.defaults().retainOnDeactivation());
             var source = linked.entity("source");
             var block = linked.block(1);
             var anchor = new Anchor("north");

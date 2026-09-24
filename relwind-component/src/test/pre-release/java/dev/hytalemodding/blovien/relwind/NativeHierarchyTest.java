@@ -30,7 +30,7 @@ class NativeHierarchyTest {
     void tickingMatchesExplicitIterationBeforeAndAfterReparenting() {
         try (var fixture = new StoreFixture()) {
             var type = new RelationshipTypeRegistry<>(fixture.registry())
-                .registerRelationship(RelationshipRules.single());
+                .registerRelationship(RelationshipTraits.defaults().exclusive());
             var parent = fixture.addEntity(new Position(), null);
             var source = fixture.addEntity(new Position(), null);
             var target = fixture.addEntity(new Position(), null);
@@ -77,7 +77,7 @@ class NativeHierarchyTest {
     void deletingANativeChildCascadesIntoItsRelationshipSource() {
         try (var fixture = new StoreFixture()) {
             var type = new RelationshipTypeRegistry<>(fixture.registry())
-                .registerRelationship(RelationshipRules.single().cascadeSource());
+                .registerRelationship(RelationshipTraits.defaults().exclusive().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
             var parent = fixture.addEntity(new Position(), null);
             var source = fixture.addEntity(new Position(), null);
             var target = fixture.addEntity(new Position(), null);
@@ -87,7 +87,7 @@ class NativeHierarchyTest {
             fixture.store().removeEntity(target, RemoveReason.REMOVE);
 
             assertFalse(target.isValid());
-            assertFalse(source.isValid(), "Deleting a child target must execute relationship deletion rules");
+            assertFalse(source.isValid(), "Deleting a child target must execute relationship deletion traits");
             assertTrue(parent.isValid());
         }
     }
@@ -96,7 +96,7 @@ class NativeHierarchyTest {
     void pluginCanExplicitlyRestrictItsTicksToRoots() {
         try (var fixture = new StoreFixture()) {
             var type = new RelationshipTypeRegistry<>(fixture.registry())
-                .registerRelationship(RelationshipRules.single());
+                .registerRelationship(RelationshipTraits.defaults().exclusive());
             var parent = fixture.addEntity(new Position(), null);
             var child = fixture.addEntity(new Position(), null);
             var target = fixture.addEntity(new Position(), null);

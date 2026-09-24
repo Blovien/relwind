@@ -30,7 +30,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.bson.BsonDocument;
@@ -40,6 +39,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -49,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// A registration fixes the linked entities, the link data and the rules of one relationship type, and
+/// A registration fixes the linked entities, the link data and the traits of one relationship type, and
 /// refuses a declaration the installation cannot keep.
 class RelationshipTypeRegistrationTest {
     private static final Relationships relationships = new Relationships();
@@ -68,14 +68,14 @@ class RelationshipTypeRegistrationTest {
         int componentCount = componentRegistry.getData().getComponentSize();
 
         var type = relationshipTypes.registerRelationship(
-            "relwind:test/follows", RelationshipRules.single().retainOnTransfer());
+            "relwind:test/follows", RelationshipTraits.defaults().exclusive().retainOnTransfer());
 
         var markerType = type.getSourceType();
         var marker = componentRegistry.createComponent(markerType);
         assertEquals(componentCount + 2, componentRegistry.getData().getComponentSize());
         assertSame(OutgoingLink.class, markerType.getTypeClass());
         assertEquals("relwind:test/follows", type.getDescriptor().id());
-        assertEquals(RelationshipRules.Survival.RETAIN, type.getDescriptor().getTransfer());
+        assertEquals(RelationshipTraits.Survival.RETAIN, type.getDescriptor().getTransfer());
         assertSame(markerType, type.getSourceType());
 
         var first = store.addEntity(componentRegistry.newHolder(), AddReason.LOAD);
@@ -94,17 +94,17 @@ class RelationshipTypeRegistrationTest {
         var relationshipTypes = new RelationshipTypeRegistry<>(componentRegistry);
         int componentCount = componentRegistry.getData().getComponentSize();
         relationshipTypes.registerRelationship(
-            "relwind:test/follows", RelationshipRules.single().retainOnTransfer());
+            "relwind:test/follows", RelationshipTraits.defaults().exclusive().retainOnTransfer());
 
         var duplicate = assertThrows(
             IllegalArgumentException.class,
             () -> relationshipTypes.registerRelationship(
-                "relwind:test/follows", RelationshipRules.single().retainOnTransfer())
+                "relwind:test/follows", RelationshipTraits.defaults().exclusive().retainOnTransfer())
         );
         var duplicateId = assertThrows(
             IllegalArgumentException.class,
             () -> relationshipTypes.registerRelationship("relwind:test/follows", Integer.class, null,
-                RelationshipRules.multiple().retainOnDeactivation())
+                RelationshipTraits.defaults().retainOnDeactivation())
         );
 
         assertTrue(duplicate.getMessage().contains("relwind:test/follows"));
@@ -120,9 +120,9 @@ class RelationshipTypeRegistrationTest {
         int componentCount = componentRegistry.getData().getComponentSize();
 
         var followsType = relationshipTypes.registerRelationship(
-            "relwind:test/follows", RelationshipRules.single());
+            "relwind:test/follows", RelationshipTraits.defaults().exclusive());
         var likesType = relationshipTypes.registerRelationship("relwind:test/likes", Integer.class, null,
-            RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+            RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
         var followsMarker = followsType.getSourceType();
         var likesMarker = likesType.getSourceType();
 
@@ -156,7 +156,7 @@ class RelationshipTypeRegistrationTest {
                 "relwind:test/raw",
                 BsonDocument.class,
                 Codec.BSON_DOCUMENT,
-                RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation()));
+                RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation()));
 
         assertTrue(rawRejected.getMessage().contains("relwind:test/raw"));
     }
@@ -165,16 +165,16 @@ class RelationshipTypeRegistrationTest {
     void registeringAPersistentTypeRequiresANamespacedId() {
         var relationshipTypes = new RelationshipTypeRegistry<>(componentRegistry);
         var namespaced = relationshipTypes.registerRelationship(
-            "relwind:test/namespaced", RelationshipRules.single());
+            "relwind:test/namespaced", RelationshipTraits.defaults().exclusive());
         assertEquals("relwind:test/namespaced", namespaced.getDescriptor().id());
 
         var rejected = assertThrows(
             IllegalArgumentException.class,
-            () -> relationshipTypes.registerRelationship("not-namespaced", RelationshipRules.single())
+            () -> relationshipTypes.registerRelationship("not-namespaced", RelationshipTraits.defaults().exclusive())
         );
 
         assertTrue(rejected.getMessage().contains("namespaced"));
-        assertDoesNotThrow(() -> relationshipTypes.registerRelationship(RelationshipRules.single()));
+        assertDoesNotThrow(() -> relationshipTypes.registerRelationship(RelationshipTraits.defaults().exclusive()));
     }
 
     /// A null codec means a holder never serializes that storage.
@@ -182,11 +182,11 @@ class RelationshipTypeRegistrationTest {
     void runtimeStorageIsUnnamed() {
         var relationshipTypes = new RelationshipTypeRegistry<>(componentRegistry);
 
-        var first = relationshipTypes.registerRelationship(RelationshipRules.single());
-        var second = relationshipTypes.registerRelationship(RelationshipRules.single());
+        var first = relationshipTypes.registerRelationship(RelationshipTraits.defaults().exclusive());
+        var second = relationshipTypes.registerRelationship(RelationshipTraits.defaults().exclusive());
         var saved = relationshipTypes.registerRelationship(
             "relwind:test/saved-storage",
-            RelationshipRules.single());
+            RelationshipTraits.defaults().exclusive());
 
         assertNull(first.getDescriptor().id());
         assertNull(second.getDescriptor().id());
@@ -197,8 +197,8 @@ class RelationshipTypeRegistrationTest {
     void distinctRuntimeRegistrationsReceiveDistinctStorage() {
         var relationshipTypes = new RelationshipTypeRegistry<>(componentRegistry);
 
-        var first = relationshipTypes.registerRelationship(RelationshipRules.single());
-        var second = relationshipTypes.registerRelationship(RelationshipRules.single());
+        var first = relationshipTypes.registerRelationship(RelationshipTraits.defaults().exclusive());
+        var second = relationshipTypes.registerRelationship(RelationshipTraits.defaults().exclusive());
 
         assertNotSame(first.getSourceType(), second.getSourceType());
         assertNotSame(first.getIncomingType(), second.getIncomingType());
@@ -209,7 +209,7 @@ class RelationshipTypeRegistrationTest {
     @ValueSource(classes = {BsonDocument.class, Integer.class, SlotData.class})
     void aRuntimeTypeCarriesAnyLinkDataClassAndKeepsNoCodec(Class<?> dataClass) {
         var relationshipTypes = new RelationshipTypeRegistry<>(componentRegistry);
-        var retaining = RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation();
+        var retaining = RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation();
 
         var type = relationshipTypes.registerRelationship(dataClass, retaining);
 
@@ -221,7 +221,7 @@ class RelationshipTypeRegistrationTest {
     void theDataOverloadsRejectATypeRegisteredWithoutLinkData() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var linked = types.registerRelationship(RelationshipRules.single());
+            var linked = types.registerRelationship(RelationshipTraits.defaults().exclusive());
             var source = fixture.addEntity(new StoreFixture.Position(1, 2), null);
             var target = fixture.addEntity(new StoreFixture.Position(3, 4), null);
 
@@ -232,107 +232,124 @@ class RelationshipTypeRegistrationTest {
         }
     }
 
-    @ParameterizedTest
-    @EnumSource(RelationshipRules.Cardinality.class)
-    void unconfiguredRulesDeclareTheirFactoryCardinalityAndNoRetention(
-        RelationshipRules.Cardinality cardinality
-    ) {
-        var rules = unconfiguredRules(cardinality);
+    @Test
+    void defaultsDeclareNonExclusiveLinksWithoutRetention() {
+        var traits = RelationshipTraits.defaults();
 
-        assertEquals(cardinality, rules.getCardinality());
-        assertEquals(RelationshipRules.Survival.REMOVE, rules.getTransfer());
-        assertEquals(RelationshipRules.Survival.REMOVE, rules.getTemporaryDeactivation());
-        assertEquals(RelationshipRules.TargetDeletion.PRESERVE_SOURCE, rules.getTargetDeletion());
-        assertEquals(RelationshipRules.SourceRetention.RELEASE, rules.getSourceRetention());
-    }
-
-    private static RelationshipRules unconfiguredRules(RelationshipRules.Cardinality cardinality) {
-        return switch (cardinality) {
-            case SINGLE_TARGET -> RelationshipRules.single();
-            case MULTIPLE_TARGETS -> RelationshipRules.multiple();
-        };
+        assertAll(
+            () -> assertEquals(false, traits.isExclusive()),
+            () -> assertSame(RelationshipTraits.OnDeleteTarget.REMOVE, traits.getOnDeleteTarget()),
+            () -> assertSame(RelationshipTraits.Survival.REMOVE, traits.getTransfer()),
+            () -> assertSame(RelationshipTraits.Survival.REMOVE, traits.getTemporaryDeactivation()),
+            () -> assertSame(RelationshipTraits.SourceRetention.RELEASE, traits.getSourceRetention()));
     }
 
     @ParameterizedTest
     @CsvSource(value = {"relwind:test/defaults, true", "null, false"}, nullValues = "null")
-    void anUnconfiguredRegistrationDeclaresSingleLinksWithoutDataOrRetention(
+    void anExclusiveRegistrationDeclaresLinksWithoutDataOrRetention(
         @Nullable String id, boolean persistent
     ) {
         var relationshipTypes = new RelationshipTypeRegistry<>(componentRegistry);
 
-        var type = registerUnconfigured(relationshipTypes, id);
+        var type = registerExclusive(relationshipTypes, id);
 
         assertEquals(id, type.getDescriptor().id());
         assertEquals(persistent, type.getDescriptor().isPersistent());
-        assertEquals(RelationshipRules.Cardinality.SINGLE_TARGET, type.getDescriptor().getCardinality());
+        assertEquals(true, type.getDescriptor().isExclusive());
         assertSame(Void.class, type.getDescriptor().linkDataClass());
         assertNull(type.getDescriptor().codec());
-        assertEquals(RelationshipRules.Survival.REMOVE, type.getDescriptor().getTransfer());
-        assertEquals(RelationshipRules.Survival.REMOVE, type.getDescriptor().getTemporaryDeactivation());
-        assertEquals(RelationshipRules.TargetDeletion.PRESERVE_SOURCE, type.getDescriptor().getTargetDeletion());
-        assertEquals(RelationshipRules.SourceRetention.RELEASE, type.getDescriptor().getSourceRetention());
+        assertEquals(RelationshipTraits.Survival.REMOVE, type.getDescriptor().getTransfer());
+        assertEquals(RelationshipTraits.Survival.REMOVE, type.getDescriptor().getTemporaryDeactivation());
+        assertEquals(RelationshipTraits.OnDeleteTarget.REMOVE, type.getDescriptor().getOnDeleteTarget());
+        assertEquals(RelationshipTraits.SourceRetention.RELEASE, type.getDescriptor().getSourceRetention());
     }
 
-    private static RelationshipType<Object, Void> registerUnconfigured(
+    private static RelationshipType<Object, Void> registerExclusive(
         RelationshipTypeRegistry<Object> types,
         @Nullable String id
     ) {
         if (id == null) {
-            return types.registerRelationship(RelationshipRules.single());
+            return types.registerRelationship(RelationshipTraits.defaults().exclusive());
         }
-        return types.registerRelationship(id, RelationshipRules.single());
+        return types.registerRelationship(id, RelationshipTraits.defaults().exclusive());
     }
 
-    /// A shared rules constant is safe to pass to more than one registration.
     @ParameterizedTest
-    @MethodSource("policyMethods")
-    void aPolicyMethodChangesOnlyItsOwnPolicyAndLeavesItsSourceAlone(
-        Function<RelationshipRules, RelationshipRules> policy,
-        Map<String, Object> changed
+    @MethodSource("traitMethods")
+    void aTraitMethodReturnsANewValueAndLeavesItsReceiverUnchanged(
+        Function<RelationshipTraits, RelationshipTraits> method,
+        Map<String, Object> expected
     ) {
-        var base = RelationshipRules.single();
+        var base = RelationshipTraits.defaults();
 
-        var declared = policies(policy.apply(base));
+        var declared = method.apply(base);
+        var repeated = method.apply(declared);
 
-        assertEquals(defaultPoliciesWith(changed), declared);
-        assertEquals(policies(RelationshipRules.single()), policies(base),
-            "the policy method must leave the value it was called on unchanged");
+        assertAll(
+            () -> assertEquals(expected, traits(declared)),
+            () -> assertEquals(expected, traits(repeated)),
+            () -> assertEquals(defaultTraits(), traits(base)),
+            () -> assertEquals(false, base == declared),
+            () -> assertEquals(false, declared == repeated));
     }
 
-    private static Stream<Arguments> policyMethods() {
+    @Test
+    void onDeleteTargetRemoveReplacesDeleteAndPreservesOtherTraits() {
+        var base = RelationshipTraits.defaults().exclusive()
+            .onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE)
+            .retainOnTransfer().retainOnDeactivation().retainSourceStorage();
+
+        var changed = base.onDeleteTarget(RelationshipTraits.OnDeleteTarget.REMOVE);
+
+        assertAll(
+            () -> assertSame(RelationshipTraits.OnDeleteTarget.REMOVE, changed.getOnDeleteTarget()),
+            () -> assertSame(RelationshipTraits.OnDeleteTarget.DELETE, base.getOnDeleteTarget()),
+            () -> assertEquals(true, changed.isExclusive()),
+            () -> assertSame(RelationshipTraits.Survival.RETAIN, changed.getTransfer()),
+            () -> assertSame(RelationshipTraits.Survival.RETAIN, changed.getTemporaryDeactivation()),
+            () -> assertSame(RelationshipTraits.SourceRetention.RETAIN, changed.getSourceRetention()));
+    }
+
+    private static Stream<Arguments> traitMethods() {
         return Stream.of(
-            policyMethod("retainOnTransfer", RelationshipRules::retainOnTransfer,
-                Map.of("transfer", RelationshipRules.Survival.RETAIN)),
-            policyMethod("retainOnDeactivation", RelationshipRules::retainOnDeactivation,
-                Map.of("temporaryDeactivation", RelationshipRules.Survival.RETAIN)),
-            policyMethod("cascadeSource", RelationshipRules::cascadeSource,
-                Map.of("targetDeletion", RelationshipRules.TargetDeletion.CASCADE_SOURCE)),
-            policyMethod("retainSourceStorage", RelationshipRules::retainSourceStorage,
-                Map.of("sourceRetention", RelationshipRules.SourceRetention.RETAIN)));
+            traitMethod("exclusive", RelationshipTraits::exclusive, "exclusive", true),
+            traitMethod("retainOnTransfer", RelationshipTraits::retainOnTransfer,
+                "transfer", RelationshipTraits.Survival.RETAIN),
+            traitMethod("retainOnDeactivation", RelationshipTraits::retainOnDeactivation,
+                "temporaryDeactivation", RelationshipTraits.Survival.RETAIN),
+            traitMethod("onDeleteTarget", traits -> traits.onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE),
+                "onDeleteTarget", RelationshipTraits.OnDeleteTarget.DELETE),
+            traitMethod("retainSourceStorage", RelationshipTraits::retainSourceStorage,
+                "sourceRetention", RelationshipTraits.SourceRetention.RETAIN));
     }
 
-    private static Arguments policyMethod(
+    private static Arguments traitMethod(
         String name,
-        Function<RelationshipRules, RelationshipRules> policy,
-        Map<String, Object> changed
+        Function<RelationshipTraits, RelationshipTraits> method,
+        String changed,
+        Object value
     ) {
-        return Arguments.argumentSet(name, policy, changed);
+        var expected = new LinkedHashMap<>(defaultTraits());
+        expected.put(changed, value);
+        return Arguments.argumentSet(name, method, expected);
     }
 
-    private static Map<String, Object> defaultPoliciesWith(Map<String, Object> changed) {
-        var policies = policies(RelationshipRules.single());
-        policies.putAll(changed);
-        return policies;
+    private static Map<String, Object> defaultTraits() {
+        return Map.of(
+            "exclusive", false,
+            "transfer", RelationshipTraits.Survival.REMOVE,
+            "temporaryDeactivation", RelationshipTraits.Survival.REMOVE,
+            "onDeleteTarget", RelationshipTraits.OnDeleteTarget.REMOVE,
+            "sourceRetention", RelationshipTraits.SourceRetention.RELEASE);
     }
 
-    private static Map<String, Object> policies(RelationshipRules rules) {
-        var policies = new LinkedHashMap<String, Object>();
-        policies.put("cardinality", rules.getCardinality());
-        policies.put("transfer", rules.getTransfer());
-        policies.put("temporaryDeactivation", rules.getTemporaryDeactivation());
-        policies.put("targetDeletion", rules.getTargetDeletion());
-        policies.put("sourceRetention", rules.getSourceRetention());
-        return policies;
+    private static Map<String, Object> traits(RelationshipTraits traits) {
+        return Map.of(
+            "exclusive", traits.isExclusive(),
+            "transfer", traits.getTransfer(),
+            "temporaryDeactivation", traits.getTemporaryDeactivation(),
+            "onDeleteTarget", traits.getOnDeleteTarget(),
+            "sourceRetention", traits.getSourceRetention());
     }
 
     private static GenericRelationshipType<Object, Object, SlotData> slotType(
@@ -341,7 +358,7 @@ class RelationshipTypeRegistrationTest {
         Codec<SlotData> codec
     ) {
         return types.registerRelationship(id, SlotData.class, codec,
-            RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+            RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
     }
 
     @ParameterizedTest
@@ -353,7 +370,7 @@ class RelationshipTypeRegistrationTest {
         var sibling = new RelationshipTypeRegistry<>(sourceRegistry);
         try {
             var declaring = registeredBySibling ? sibling : installer;
-            var cascade = declaring.registerRelationship(targets, RelationshipRules.single().cascadeSource());
+            var cascade = declaring.registerRelationship(targets, RelationshipTraits.defaults().exclusive().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
             var chunks = new TestPersistenceIdentity<Object, Integer>((store, ref) -> 1,
                 Codec.INTEGER, "CHUNK_POSITIONS", (store, id) -> false, peer -> null);
 
@@ -371,7 +388,7 @@ class RelationshipTypeRegistrationTest {
             assertSame(tracker, sibling.getTracker());
             assertDoesNotThrow(() -> declaring.registerRelationship(
                 targets,
-                RelationshipRules.single().cascadeSource()));
+                RelationshipTraits.defaults().exclusive().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE)));
         } finally {
             sibling.close();
             installer.close();
@@ -394,15 +411,15 @@ class RelationshipTypeRegistrationTest {
                 TestStoreRuntime.<Object>inline().withoutDeletion());
             var rejected = assertThrows(IllegalArgumentException.class, () -> chunkTypes.registerRelationship(
                 entityTypes,
-                RelationshipRules.single().cascadeSource()));
-            assertTrue(rejected.getMessage().contains("never deletes a linked entity"), rejected.getMessage());
+                RelationshipTraits.defaults().exclusive().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE)));
+            assertEquals(true, rejected.getMessage().contains("onDeleteTarget(DELETE)"), rejected.getMessage());
 
             // an entity source may cascade, because deleting a block entity can delete its sources
             var anchoredTo = entityTypes.registerRelationship(
                 chunkTypes,
-                RelationshipRules.single().cascadeSource());
-            assertEquals(RelationshipRules.TargetDeletion.CASCADE_SOURCE,
-                anchoredTo.getDescriptor().getTargetDeletion());
+                RelationshipTraits.defaults().exclusive().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
+            assertEquals(RelationshipTraits.OnDeleteTarget.DELETE,
+                anchoredTo.getDescriptor().getOnDeleteTarget());
         } finally {
             chunkTypes.close();
             entityTypes.close();
@@ -424,10 +441,10 @@ class RelationshipTypeRegistrationTest {
                 Codec.INTEGER, "CHUNK_POSITIONS", (store, id) -> false, peer -> null),
                 TestStoreRuntime.inline());
 
-            var cascading = sources.registerRelationship(targets, RelationshipRules.single().cascadeSource());
+            var cascading = sources.registerRelationship(targets, RelationshipTraits.defaults().exclusive().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
 
-            assertEquals(RelationshipRules.TargetDeletion.CASCADE_SOURCE,
-                cascading.getDescriptor().getTargetDeletion());
+            assertEquals(RelationshipTraits.OnDeleteTarget.DELETE,
+                cascading.getDescriptor().getOnDeleteTarget());
         } finally {
             sources.close();
             targets.close();
@@ -448,17 +465,17 @@ class RelationshipTypeRegistrationTest {
 
             var rejected = assertThrows(IllegalArgumentException.class, () -> types.registerRelationship(
                 "relwind:test/never-saved",
-                RelationshipRules.single()));
+                RelationshipTraits.defaults().exclusive()));
             var rejectedBridge = assertThrows(IllegalArgumentException.class, () -> types.registerRelationship(
                 "relwind:test/never-saved-bridge",
                 targets,
-                RelationshipRules.single()));
+                RelationshipTraits.defaults().exclusive()));
 
             assertTrue(rejected.getMessage().contains("saves no links"), rejected.getMessage());
             assertTrue(rejectedBridge.getMessage().contains("saves no links"), rejectedBridge.getMessage());
             assertNull(types.getRegisteredType("relwind:test/never-saved"));
-            assertDoesNotThrow(() -> types.registerRelationship(RelationshipRules.single()));
-            assertDoesNotThrow(() -> types.registerRelationship(targets, RelationshipRules.single()));
+            assertDoesNotThrow(() -> types.registerRelationship(RelationshipTraits.defaults().exclusive()));
+            assertDoesNotThrow(() -> types.registerRelationship(targets, RelationshipTraits.defaults().exclusive()));
             assertThrows(IllegalStateException.class, installation::installPersistence);
         } finally {
             targets.close();
@@ -473,11 +490,11 @@ class RelationshipTypeRegistrationTest {
             var saved = bridge.entityTypes.registerRelationship(
                 "relwind:test/saved",
                 bridge.chunkTypes,
-                RelationshipRules.single().retainOnDeactivation().retainOnTransfer());
+                RelationshipTraits.defaults().exclusive().retainOnDeactivation().retainOnTransfer());
 
             assertTrue(saved.getDescriptor().isPersistent());
-            assertEquals(RelationshipRules.Survival.RETAIN, saved.getDescriptor().getTemporaryDeactivation());
-            assertEquals(RelationshipRules.Survival.RETAIN, saved.getDescriptor().getTransfer());
+            assertEquals(RelationshipTraits.Survival.RETAIN, saved.getDescriptor().getTemporaryDeactivation());
+            assertEquals(RelationshipTraits.Survival.RETAIN, saved.getDescriptor().getTransfer());
         }
     }
 
@@ -488,7 +505,7 @@ class RelationshipTypeRegistrationTest {
             assertThrows(IllegalArgumentException.class, () -> bridge.entityTypes.registerRelationship(
                 "unnamespaced",
                 bridge.chunkTypes,
-                RelationshipRules.single()));
+                RelationshipTraits.defaults().exclusive()));
         }
     }
 
@@ -501,7 +518,7 @@ class RelationshipTypeRegistrationTest {
                 bridge.chunkTypes,
                 SlotData.class,
                 unversionedSlotCodec(),
-                RelationshipRules.multiple()));
+                RelationshipTraits.defaults()));
         }
     }
 
@@ -510,7 +527,7 @@ class RelationshipTypeRegistrationTest {
         try (var bridge = new BridgeTypes()) {
             assertThrows(IllegalArgumentException.class, () -> bridge.entityTypes.registerRelationship(
                 bridge.entityTypes,
-                RelationshipRules.single()));
+                RelationshipTraits.defaults().exclusive()));
         }
     }
 
@@ -567,7 +584,7 @@ class RelationshipTypeRegistrationTest {
 
             GenericRelationshipType<Entities, Blocks, Void> anchoredTo = entityTypes.registerRelationship(
                 blockTypes,
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
 
             assertEquals(entityComponents + 1, fixture.entityRegistry().getData().getComponentSize());
             assertEquals(blockComponents + 1, fixture.blockRegistry().getData().getComponentSize());
@@ -586,11 +603,11 @@ class RelationshipTypeRegistrationTest {
             RelationshipTypeRegistry<Blocks> blocks = RelationshipTestFixtures.blockTypes(fixture);
 
             RelationshipType<Entities, Void> follows =
-                entities.registerRelationship(RelationshipRules.single());
+                entities.registerRelationship(RelationshipTraits.defaults().exclusive());
             RelationshipType<Entities, String> owes =
-                entities.registerRelationship(String.class, RelationshipRules.single());
+                entities.registerRelationship(String.class, RelationshipTraits.defaults().exclusive());
             GenericRelationshipType<Entities, Blocks, Void> anchoredTo =
-                entities.registerRelationship(blocks, RelationshipRules.single());
+                entities.registerRelationship(blocks, RelationshipTraits.defaults().exclusive());
 
             var source = fixture.addEntity(world);
             var friend = fixture.addEntity(world);

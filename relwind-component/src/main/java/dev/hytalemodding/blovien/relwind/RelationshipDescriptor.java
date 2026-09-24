@@ -20,11 +20,11 @@ record RelationshipDescriptor<TARGET, LINK_DATA>(
     @Nullable RelationshipTypeRegistry<TARGET> targetTypes,
     Class<LINK_DATA> linkDataClass,
     @Nullable Codec<LINK_DATA> codec,
-    RelationshipRules rules
+    RelationshipTraits traits
 ) {
     RelationshipDescriptor {
         Objects.requireNonNull(linkDataClass, "linkDataClass");
-        Objects.requireNonNull(rules, "rules");
+        Objects.requireNonNull(traits, "traits");
     }
 
     /// True when the type has an id, because only a named type is saved.
@@ -32,28 +32,27 @@ record RelationshipDescriptor<TARGET, LINK_DATA>(
         return id != null;
     }
 
-    @Nonnull
-    RelationshipRules.Cardinality getCardinality() {
-        return rules.getCardinality();
+    boolean isExclusive() {
+        return traits.isExclusive();
     }
 
     @Nonnull
-    RelationshipRules.Survival getTransfer() {
-        return rules.getTransfer();
+    RelationshipTraits.Survival getTransfer() {
+        return traits.getTransfer();
     }
 
     @Nonnull
-    RelationshipRules.Survival getTemporaryDeactivation() {
-        return rules.getTemporaryDeactivation();
+    RelationshipTraits.Survival getTemporaryDeactivation() {
+        return traits.getTemporaryDeactivation();
     }
 
     @Nonnull
-    RelationshipRules.TargetDeletion getTargetDeletion() {
-        return rules.getTargetDeletion();
+    RelationshipTraits.OnDeleteTarget getOnDeleteTarget() {
+        return traits.getOnDeleteTarget();
     }
 
     @Nonnull
-    RelationshipRules.SourceRetention getSourceRetention() {
-        return rules.getSourceRetention();
+    RelationshipTraits.SourceRetention getSourceRetention() {
+        return traits.getSourceRetention();
     }
 }

@@ -25,7 +25,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hytalemodding.blovien.relwind.GenericRelationshipType;
 import dev.hytalemodding.blovien.relwind.PersistenceIdentity;
 import dev.hytalemodding.blovien.relwind.RelationshipPersistence;
-import dev.hytalemodding.blovien.relwind.RelationshipRules;
+import dev.hytalemodding.blovien.relwind.RelationshipTraits;
 import dev.hytalemodding.blovien.relwind.RelationshipTracker;
 import dev.hytalemodding.blovien.relwind.RelationshipType;
 import dev.hytalemodding.blovien.relwind.RelationshipTypeRegistry;
@@ -193,11 +193,11 @@ class ChunkInstallationTest {
         try (var entities = new EntitySide(); var fixture = new ChunkStoreFixture()) {
             var chunkTypes = fixture.installation().getRelationshipTypeRegistry();
             entities.types.registerRelationship(
-                "relwind:test/anchored-to", chunkTypes, RelationshipRules.single());
+                "relwind:test/anchored-to", chunkTypes, RelationshipTraits.defaults().exclusive());
 
             assertThrows(IllegalArgumentException.class,
                 () -> entities.types.registerRelationship(
-                    "relwind:test/anchored-to", chunkTypes, RelationshipRules.single()));
+                    "relwind:test/anchored-to", chunkTypes, RelationshipTraits.defaults().exclusive()));
         }
     }
 
@@ -213,8 +213,8 @@ class ChunkInstallationTest {
         RelationshipTypeRegistry<ChunkStore> types,
         @Nullable String name
     ) {
-        return name == null ? types.registerRelationship(RelationshipRules.single())
-            : types.registerRelationship(name, RelationshipRules.single());
+        return name == null ? types.registerRelationship(RelationshipTraits.defaults().exclusive())
+            : types.registerRelationship(name, RelationshipTraits.defaults().exclusive());
     }
 
     /// One saved block entity source, linked to the block at index 11 of section (2, 6, -3).
@@ -255,7 +255,7 @@ class ChunkInstallationTest {
     @Nonnull
     private static RelationshipType<ChunkStore, Void> chunkType(ChunkStoreFixture fixture) {
         return fixture.installation().getRelationshipTypeRegistry()
-            .registerRelationship(ANCHORED_TO, RelationshipRules.single().retainOnDeactivation());
+            .registerRelationship(ANCHORED_TO, RelationshipTraits.defaults().exclusive().retainOnDeactivation());
     }
 
     @Nonnull
@@ -264,7 +264,7 @@ class ChunkInstallationTest {
         RelationshipTypeRegistry<EntityStore> entities
     ) {
         return fixture.installation().getRelationshipTypeRegistry()
-            .registerRelationship(TENDED_BY, entities, RelationshipRules.single().retainOnDeactivation());
+            .registerRelationship(TENDED_BY, entities, RelationshipTraits.defaults().exclusive().retainOnDeactivation());
     }
 
     /// The entity side of the two-runtime seam: one entity installation on a bare registry, whose

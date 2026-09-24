@@ -260,8 +260,8 @@ final class RelationshipDeletionSystem<ECS_TYPE> extends RefSystem<ECS_TYPE> imp
         var sources = new ArrayList<Ref<SOURCE>>(incoming.size());
         incoming.forEach(sources::add);
         incoming.clear();
-        boolean cascade = type.getDescriptor().getTargetDeletion()
-            == RelationshipRules.TargetDeletion.CASCADE_SOURCE;
+        boolean cascade = type.getDescriptor().getOnDeleteTarget()
+            == RelationshipTraits.OnDeleteTarget.DELETE;
         for (var source : sources) {
             if (!source.isValid() || !RelationshipLifecycle.releaseDeletedTarget(type, source, deleted)) {
                 continue;
@@ -383,8 +383,8 @@ final class RelationshipDeletionSystem<ECS_TYPE> extends RefSystem<ECS_TYPE> imp
                 }
             }
             if (
-                type.getDescriptor().getTargetDeletion()
-                    == RelationshipRules.TargetDeletion.CASCADE_SOURCE
+                type.getDescriptor().getOnDeleteTarget()
+                    == RelationshipTraits.OnDeleteTarget.DELETE
                 && deletion.scheduled.add(source)
             ) {
                 deletion.cascading.addLast(source);

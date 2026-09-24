@@ -10,7 +10,7 @@ import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.math.util.ChunkUtil;
 import com.hypixel.hytale.server.core.modules.block.BlockModule;
 import com.hypixel.hytale.server.core.universe.world.storage.ChunkStore;
-import dev.hytalemodding.blovien.relwind.RelationshipRules;
+import dev.hytalemodding.blovien.relwind.RelationshipTraits;
 import dev.hytalemodding.blovien.relwind.Relationships;
 import org.bson.BsonDocument;
 import org.joml.Vector3i;
@@ -56,7 +56,7 @@ class NativeHierarchyPersistenceTest {
         var saved = savedChildLink();
         try (var fixture = new ChunkStoreFixture()) {
             var type = fixture.installation().getRelationshipTypeRegistry().registerRelationship(
-                TYPE, RelationshipRules.single().retainOnDeactivation());
+                TYPE, RelationshipTraits.defaults().exclusive().retainOnDeactivation());
             var section = fixture.addSection(2, 5, -3, AddReason.LOAD);
             var holder = fixture.registry().deserialize(saved);
             holder.putComponent(fixture.positions().blockState(), new BlockModule.BlockStateInfo(INDEX, section));
@@ -75,7 +75,7 @@ class NativeHierarchyPersistenceTest {
     private BsonDocument savedChildLink() {
         try (var fixture = new ChunkStoreFixture()) {
             var type = fixture.installation().getRelationshipTypeRegistry().registerRelationship(
-                TYPE, RelationshipRules.single().retainOnDeactivation());
+                TYPE, RelationshipTraits.defaults().exclusive().retainOnDeactivation());
             var section = fixture.addSection(2, 5, -3, AddReason.LOAD);
             var source = addChild(fixture, section, INDEX);
             relationships.addTarget(fixture.store(), source, type, addChild(fixture, section, (short) 11));

@@ -23,7 +23,7 @@ class RelationshipExecutionTest {
     void storeIterationRejectsAnEnclosingRelationshipTraversalBeforeCallingTheConsumer() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(RelationshipRules.multiple());
+            var follows = types.registerRelationship(RelationshipTraits.defaults());
             var source = fixture.addEntity(new Position(1, 2), null);
             var target = fixture.addEntity(new Position(3, 4), null);
             relationships.addTarget(fixture.store(), source, follows, target);
@@ -40,8 +40,8 @@ class RelationshipExecutionTest {
     void nestedFetchesPreserveOuterBindingsWhenTheInnerReaderFails() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(String.class, RelationshipRules.multiple());
-            var owns = types.registerRelationship(Integer.class, RelationshipRules.multiple());
+            var follows = types.registerRelationship(String.class, RelationshipTraits.defaults());
+            var owns = types.registerRelationship(Integer.class, RelationshipTraits.defaults());
             var source = fixture.addEntity(new Position(1, 2), null);
             var target = fixture.addEntity(new Position(3, 4), null);
             var item = fixture.addEntity(new Position(5, 6), null);
@@ -83,7 +83,7 @@ class RelationshipExecutionTest {
     void fetchUsesCommittedStateWithoutConsumingTheEnclosingCommandBuffer() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(RelationshipRules.multiple());
+            var follows = types.registerRelationship(RelationshipTraits.defaults());
             var source = fixture.addEntity(new Position(1, 2), new Player("source"));
             var first = fixture.addEntity(new Position(3, 4), null);
             var second = fixture.addEntity(new Position(5, 6), null);
@@ -109,7 +109,7 @@ class RelationshipExecutionTest {
     void fetchAllowsImmediateChangesAfterItHasCollectedTheResults() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(RelationshipRules.multiple());
+            var follows = types.registerRelationship(RelationshipTraits.defaults());
             var source = fixture.addEntity(new Position(1, 2), null);
             var target = fixture.addEntity(new Position(3, 4), null);
             relationships.addTarget(fixture.store(), source, follows, target);
@@ -132,7 +132,7 @@ class RelationshipExecutionTest {
     void storeIterationExpiresItsBorrowedResultAfterACallbackFailure() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(RelationshipRules.multiple());
+            var follows = types.registerRelationship(RelationshipTraits.defaults());
             var source = fixture.addEntity(new Position(1, 2), null);
             var target = fixture.addEntity(new Position(3, 4), null);
             relationships.addTarget(fixture.store(), source, follows, target);
@@ -162,7 +162,7 @@ class RelationshipExecutionTest {
     void storeIterationFiltersSourcesAndTargetsAndDefersCommandsUntilIterationEnds() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(RelationshipRules.multiple());
+            var follows = types.registerRelationship(RelationshipTraits.defaults());
             var source = fixture.addEntity(new Position(1, 2), new Player("source"));
             var rejectedSource = fixture.addEntity(new Position(2, 3), null);
             var target = fixture.addEntity(new Position(3, 4), new Player("target"));
@@ -195,7 +195,7 @@ class RelationshipExecutionTest {
     void reachableFetchReportsTruncationEvenWhenNoEntityMatches() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(RelationshipRules.multiple());
+            var follows = types.registerRelationship(RelationshipTraits.defaults());
             var start = fixture.addEntity(new Position(1, 2), null);
             var middle = fixture.addEntity(new Position(2, 3), null);
             var end = fixture.addEntity(new Position(3, 4), new Player("end"));
@@ -217,7 +217,7 @@ class RelationshipExecutionTest {
     void fetchReturnsTheReadersValueAndExpiresItsBorrowedResults() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(RelationshipRules.multiple());
+            var follows = types.registerRelationship(RelationshipTraits.defaults());
             var source = fixture.addEntity(new Position(1, 2), null);
             var target = fixture.addEntity(new Position(3, 4), null);
             relationships.addTarget(fixture.store(), source, follows, target);

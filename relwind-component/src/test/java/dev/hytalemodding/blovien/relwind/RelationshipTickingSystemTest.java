@@ -44,7 +44,7 @@ class RelationshipTickingSystemTest {
     void tickingDefinitionUsesReachableWithoutEnumeratingThePath() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = types.registerRelationship(RelationshipRules.single());
+            var type = types.registerRelationship(RelationshipTraits.defaults().exclusive());
             var delivered = new ArrayList<Ref<Object>>();
             var query = RelationshipQuery.of(RelationshipQuery.reachable(type,
                 RelationshipQuery.Direction.INCOMING, 2, fixture.playerType()), type);
@@ -90,7 +90,7 @@ class RelationshipTickingSystemTest {
         try (var fixture = new StoreFixture()) {
             var follows = new RelationshipTypeRegistry<>(fixture.registry()).registerRelationship(
                 FollowData.class,
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
             var system = new RecordingRelationshipSystem(
                 Archetype.of(fixture.positionType(), fixture.playerType()),
                 follows
@@ -138,7 +138,7 @@ class RelationshipTickingSystemTest {
             var positionType = registry.registerComponent(Position.class, Position::new);
             var follows = new RelationshipTypeRegistry<>(registry).registerRelationship(
                 FollowData.class,
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
             var system = new RecordingRelationshipSystem(Archetype.of(positionType), follows);
             registry.registerSystem(system);
             var firstStore = registry.addStore(new Object(), EmptyResourceStorage.get());
@@ -162,7 +162,7 @@ class RelationshipTickingSystemTest {
         var positionType = registry.registerComponent(Position.class, Position::new);
         var follows = new RelationshipTypeRegistry<>(registry).registerRelationship(
             FollowData.class,
-            RelationshipRules.single());
+            RelationshipTraits.defaults().exclusive());
         var system = new OverlappingRelationshipSystem(Archetype.of(positionType), follows);
         registry.registerSystem(system);
         var ready = new CountDownLatch(2);
@@ -197,7 +197,7 @@ class RelationshipTickingSystemTest {
             var positionType = registry.registerComponent(Position.class, Position::new);
             var follows = new RelationshipTypeRegistry<>(registry).registerRelationship(
                 FollowData.class,
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
             var system = new NestedRelationshipSystem(Archetype.of(positionType), follows);
             registry.registerSystem(system);
             var outerStore = registry.addStore(new Object(), EmptyResourceStorage.get());

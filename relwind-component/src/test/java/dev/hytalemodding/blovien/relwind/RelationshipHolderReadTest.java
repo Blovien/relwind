@@ -49,7 +49,7 @@ class RelationshipHolderReadTest {
         try (var fixture = new Fixture()) {
             var type = fixture.types.registerRelationship(
                 "relwind:holder/void",
-                RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+                RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
             var source = fixture.entity();
             var available = fixture.entity();
             var unavailable = fixture.entity();
@@ -82,9 +82,9 @@ class RelationshipHolderReadTest {
     void holderLookupSurvivesTheRemovalOfAnotherTypeAndTheReturnOfItsSource(boolean close) {
         try (var fixture = new Fixture()) {
             var first = fixture.types.registerRelationship(
-                RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+                RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
             var second = fixture.types.registerRelationship(
-                RelationshipRules.single().retainOnTransfer().retainOnDeactivation());
+                RelationshipTraits.defaults().exclusive().retainOnTransfer().retainOnDeactivation());
             var source = fixture.entity();
             var left = fixture.entity();
             var right = fixture.entity();
@@ -232,7 +232,7 @@ class RelationshipHolderReadTest {
         try (var fixture = new Fixture()) {
             var type = fixture.types.registerRelationship(
                 "relwind:holder/cleanup",
-                RelationshipRules.multiple().retainOnDeactivation());
+                RelationshipTraits.defaults().retainOnDeactivation());
             var source = fixture.entity();
             var target = fixture.entity();
             relationships.addTarget(fixture.store, source, type, target);
@@ -316,7 +316,7 @@ class RelationshipHolderReadTest {
         try (var fixture = new Fixture()) {
             var type = fixture.types.registerRelationship(
                 BsonDocument.class,
-                RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+                RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
             var source = fixture.entity();
             var target = fixture.entity();
             var data = BsonDocument.parse("{value: 7}");
@@ -407,7 +407,7 @@ class RelationshipHolderReadTest {
         Codec<HolderData> codec
     ) {
         return types.registerRelationship("relwind:holder/data", HolderData.class, codec,
-            RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+            RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
     }
 
     private static ArrayList<Object> readRepeatedly(

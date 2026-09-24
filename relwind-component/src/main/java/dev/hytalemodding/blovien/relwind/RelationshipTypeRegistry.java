@@ -206,23 +206,23 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
     /// A type registered with an id saves its links. A type without an id keeps them in memory.
     /// An id must be namespaced, in the `Group:Name` form.
     @Nonnull
-    public RelationshipType<ECS_TYPE, Void> registerRelationship(RelationshipRules rules) {
-        return registerSameStore(null, Void.class, null, rules);
+    public RelationshipType<ECS_TYPE, Void> registerRelationship(RelationshipTraits traits) {
+        return registerSameStore(null, Void.class, null, traits);
     }
 
     @Nonnull
     public <LINK_DATA> RelationshipType<ECS_TYPE, LINK_DATA> registerRelationship(
         Class<LINK_DATA> linkDataClass,
-        RelationshipRules rules
+        RelationshipTraits traits
     ) {
         Objects.requireNonNull(linkDataClass, "linkDataClass");
-        return registerSameStore(null, linkDataClass, null, rules);
+        return registerSameStore(null, linkDataClass, null, traits);
     }
 
     @Nonnull
-    public RelationshipType<ECS_TYPE, Void> registerRelationship(String id, RelationshipRules rules) {
+    public RelationshipType<ECS_TYPE, Void> registerRelationship(String id, RelationshipTraits traits) {
         Objects.requireNonNull(id, "id");
-        return registerSameStore(id, Void.class, null, rules);
+        return registerSameStore(id, Void.class, null, traits);
     }
 
     /// A null codec leaves the saved links alone. They are not restored and a link change throws.
@@ -231,40 +231,40 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
         String id,
         Class<LINK_DATA> linkDataClass,
         @Nullable Codec<LINK_DATA> codec,
-        RelationshipRules rules
+        RelationshipTraits traits
     ) {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(linkDataClass, "linkDataClass");
-        return registerSameStore(id, linkDataClass, codec, rules);
+        return registerSameStore(id, linkDataClass, codec, traits);
     }
 
     /// `targetRegistry` must sit on a different ComponentRegistry than this one.
     @Nonnull
     public <TARGET> GenericRelationshipType<ECS_TYPE, TARGET, Void> registerRelationship(
         RelationshipTypeRegistry<TARGET> targetRegistry,
-        RelationshipRules rules
+        RelationshipTraits traits
     ) {
-        return registerTargeting(null, targetRegistry, Void.class, null, rules);
+        return registerTargeting(null, targetRegistry, Void.class, null, traits);
     }
 
     @Nonnull
     public <TARGET, LINK_DATA> GenericRelationshipType<ECS_TYPE, TARGET, LINK_DATA> registerRelationship(
         RelationshipTypeRegistry<TARGET> targetRegistry,
         Class<LINK_DATA> linkDataClass,
-        RelationshipRules rules
+        RelationshipTraits traits
     ) {
         Objects.requireNonNull(linkDataClass, "linkDataClass");
-        return registerTargeting(null, targetRegistry, linkDataClass, null, rules);
+        return registerTargeting(null, targetRegistry, linkDataClass, null, traits);
     }
 
     @Nonnull
     public <TARGET> GenericRelationshipType<ECS_TYPE, TARGET, Void> registerRelationship(
         String id,
         RelationshipTypeRegistry<TARGET> targetRegistry,
-        RelationshipRules rules
+        RelationshipTraits traits
     ) {
         Objects.requireNonNull(id, "id");
-        return registerTargeting(id, targetRegistry, Void.class, null, rules);
+        return registerTargeting(id, targetRegistry, Void.class, null, traits);
     }
 
     @Nonnull
@@ -273,11 +273,11 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
         RelationshipTypeRegistry<TARGET> targetRegistry,
         Class<LINK_DATA> linkDataClass,
         @Nullable Codec<LINK_DATA> codec,
-        RelationshipRules rules
+        RelationshipTraits traits
     ) {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(linkDataClass, "linkDataClass");
-        return registerTargeting(id, targetRegistry, linkDataClass, codec, rules);
+        return registerTargeting(id, targetRegistry, linkDataClass, codec, traits);
     }
 
     @Nonnull
@@ -285,10 +285,10 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
         @Nullable String id,
         Class<LINK_DATA> linkDataClass,
         @Nullable Codec<LINK_DATA> codec,
-        RelationshipRules rules
+        RelationshipTraits traits
     ) {
         var descriptor = new RelationshipDescriptor<ECS_TYPE, LINK_DATA>(
-            id, null, linkDataClass, codec, Objects.requireNonNull(rules, "rules"));
+            id, null, linkDataClass, codec, Objects.requireNonNull(traits, "traits"));
         return (RelationshipType<ECS_TYPE, LINK_DATA>) registerDescriptor(descriptor);
     }
 
@@ -298,11 +298,11 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
         RelationshipTypeRegistry<TARGET> targetRegistry,
         Class<LINK_DATA> linkDataClass,
         @Nullable Codec<LINK_DATA> codec,
-        RelationshipRules rules
+        RelationshipTraits traits
     ) {
         Objects.requireNonNull(targetRegistry, "targetRegistry");
         var descriptor = new RelationshipDescriptor<>(
-            id, targetRegistry, linkDataClass, codec, Objects.requireNonNull(rules, "rules"));
+            id, targetRegistry, linkDataClass, codec, Objects.requireNonNull(traits, "traits"));
         return registerDescriptor(descriptor);
     }
 
@@ -335,11 +335,11 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
     }
 
     static void validateCascadingSource(RelationshipDescriptor<?, ?> descriptor, StoreRuntime<?> runtime) {
-        if (descriptor.getTargetDeletion() == RelationshipRules.TargetDeletion.CASCADE_SOURCE
+        if (descriptor.getOnDeleteTarget() == RelationshipTraits.OnDeleteTarget.DELETE
             && !runtime.isDeletionSupported()) {
             // TODO: allow this once a block entity source can delete its entity targets
             throw new IllegalArgumentException("Relationship type '" + descriptor.id()
-                + "' cannot cascade source deletion because its source store never deletes a linked entity");
+                + "' cannot use onDeleteTarget(DELETE) because its source store never deletes a linked entity");
         }
     }
 
@@ -461,7 +461,7 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
         }
         if (descriptor.linkDataClass() == Void.class) {
             if (codec != null) throw new IllegalArgumentException("A payload codec requires a persistent type with link data");
-        } else if (descriptor.getCardinality() == RelationshipRules.Cardinality.MULTIPLE_TARGETS
+        } else if (!descriptor.isExclusive()
             && codec != null && !isVersionedBuilderCodec(codec)) {
             throw new IllegalArgumentException(
                 "Persistent relationship type '" + descriptor.id() + "' requires a versioned BuilderCodec");

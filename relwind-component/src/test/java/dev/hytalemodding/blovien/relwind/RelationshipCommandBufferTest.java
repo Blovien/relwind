@@ -116,7 +116,7 @@ class RelationshipCommandBufferTest {
             var otherTarget = fixture.addEntity();
             var otherType = new RelationshipTypeRegistry<>(fixture.registry).registerRelationship(
                 LinkData.class,
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
             var initial = new LinkData("initial");
             var replacement = new LinkData("replacement");
             var trace = new ArrayList<String>();
@@ -830,7 +830,7 @@ class RelationshipCommandBufferTest {
         private final RelationshipTypeRegistry<Object> types = new RelationshipTypeRegistry<>(registry);
         private final RelationshipType<Object, LinkData> type = types.registerRelationship(
             LinkData.class,
-            RelationshipRules.single());
+            RelationshipTraits.defaults().exclusive());
         private final ActionSystem action = new ActionSystem(triggerType);
         private final Store<Object> store;
 

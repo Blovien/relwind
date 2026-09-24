@@ -86,7 +86,7 @@ class RetainedHolderQueryTest {
         try (var fixture = new Fixture()) {
             var type = fixture.types.registerRelationship(
                 "test:no-replay",
-                RelationshipRules.single().retainOnDeactivation());
+                RelationshipTraits.defaults().exclusive().retainOnDeactivation());
             var source = fixture.entity();
             var target = fixture.entity();
             var sourceId = fixture.ids.get(source);
@@ -286,10 +286,10 @@ class RetainedHolderQueryTest {
         }
 
         RelationshipType<Object, Void> type(String name, boolean persistent) {
-            var rules = RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation();
+            var traits = RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation();
             return persistent
-                ? types.registerRelationship("relwind:retained-holder/" + name, rules)
-                : types.registerRelationship(rules);
+                ? types.registerRelationship("relwind:retained-holder/" + name, traits)
+                : types.registerRelationship(traits);
         }
 
         Ref<Object> entity() {

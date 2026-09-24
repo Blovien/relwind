@@ -9,7 +9,7 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hytalemodding.blovien.relwind.RelationshipQuery;
-import dev.hytalemodding.blovien.relwind.RelationshipRules;
+import dev.hytalemodding.blovien.relwind.RelationshipTraits;
 import dev.hytalemodding.blovien.relwind.RelationshipType;
 import dev.hytalemodding.blovien.relwind.plugin.Relwind;
 
@@ -22,7 +22,7 @@ import java.util.List;
 public final class AllianceExample {
     /// The type is registered without an id, which makes it a runtime type: an alliance between
     /// entities that are in the world together is not worth saving.
-    public static final RelationshipRules RULES = RelationshipRules.multiple();
+    public static final RelationshipTraits TRAITS = RelationshipTraits.defaults();
 
     /// Two hops is an ally and an ally of that ally.
     public static final int ALERT_HOPS = 2;

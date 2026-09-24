@@ -38,8 +38,8 @@ class RelationshipAdapterAgreementTest {
         try (var fixture = new StoreFixture()) {
             var weaponType = fixture.registry().registerComponent(Weapon.class, Weapon::new);
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship("relwind:test/follows", RelationshipRules.multiple());
-            var owns = types.registerRelationship("relwind:test/owns", RelationshipRules.multiple());
+            var follows = types.registerRelationship("relwind:test/follows", RelationshipTraits.defaults());
+            var owns = types.registerRelationship("relwind:test/owns", RelationshipTraits.defaults());
             var weapon = RelationshipQuery.enumerate(owns, weaponType);
             var targetQuery = RelationshipQuery.and(fixture.positionType(), weapon);
             var ticking = new TickingMatches(follows, targetQuery, weapon);

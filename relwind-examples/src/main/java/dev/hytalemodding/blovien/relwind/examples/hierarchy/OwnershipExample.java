@@ -10,7 +10,7 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hytalemodding.blovien.relwind.RelationshipQuery;
-import dev.hytalemodding.blovien.relwind.RelationshipRules;
+import dev.hytalemodding.blovien.relwind.RelationshipTraits;
 import dev.hytalemodding.blovien.relwind.RelationshipType;
 import dev.hytalemodding.blovien.relwind.plugin.Relwind;
 
@@ -20,13 +20,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /// A tree of owned creatures. Each link points from the owned creature to its owner, and
-/// `cascadeSource()` deletes what a deleted owner owns, one level after the other. Uses
+/// `onDeleteTarget(DELETE)` deletes what a deleted owner owns, one level after the other. Uses
 /// `addTarget`, `retarget`, `removeTarget`, `getFirstTarget` and reachable queries through Relationships.
 public final class OwnershipExample {
     /// A persistent type needs a namespaced id, because saved links carry it across plugins.
     public static final String OWNED_BY = "Example:OwnedBy";
 
-    public static final RelationshipRules RULES = RelationshipRules.single().cascadeSource();
+    public static final RelationshipTraits TRAITS = RelationshipTraits.defaults().exclusive()
+        .onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE);
 
     /// A depth limit is required, and eight levels is more than a player builds by hand.
     public static final int LISTING_DEPTH = 8;

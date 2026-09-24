@@ -132,7 +132,41 @@ class RelationshipPersistenceTest {
 
     private static GenericRelationshipType<Object, Object, Slot> schemaType(RelationshipTypeRegistry<Object> types) {
         return types.registerRelationship("relwind:test/schema", Slot.class, Slot.CODEC,
-            RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+            RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
+    }
+
+    @Test
+    void deletingTheSourceTraitSavesTheCascadeSourceDisposition() {
+        try (var fixture = new Fixture()) {
+            var source = fixture.add(UUID.randomUUID());
+            var target = fixture.add(UUID.randomUUID());
+            var type = fixture.types.registerRelationship("relwind:test/cascade-schema",
+                RelationshipTraits.defaults().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
+            relationships.addTarget(fixture.store, source, type, target);
+
+            var saved = fixture.registry.serialize(fixture.store.copySerializableEntity(source));
+
+            var record = saved.getDocument("Components").getDocument(RelationshipPersistence.COMPONENT_ID)
+                .getArray("Links").get(0).asDocument();
+            assertEquals("CascadeSource", record.getString("CleanupDisposition").getValue());
+        }
+    }
+
+    @Test
+    void aCascadeSourceRecordRestoresIntoATypeThatDeletesTheSource() {
+        try (var fixture = new Fixture()) {
+            var targetId = UUID.randomUUID();
+            var target = fixture.add(targetId);
+            var source = fixture.add(UUID.randomUUID());
+            var type = fixture.types.registerRelationship("relwind:test/cascade-schema",
+                RelationshipTraits.defaults().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
+            var saved = records(savedRecord("relwind:test/cascade-schema", targetId, "CascadeSource"));
+            fixture.store.addComponent(source, fixture.persistence.getComponentType(), decoded(saved));
+
+            fixture.persistence.restore(source);
+
+            assertSame(target, relationships.getFirstTarget(source, type));
+        }
     }
 
     @Test
@@ -487,7 +521,7 @@ class RelationshipPersistenceTest {
             var savedTarget = fixture.add(savedId);
             var liveTarget = fixture.add(UUID.randomUUID());
             var saved = fixture.persistent("relwind:test/kept");
-            var live = fixture.types.registerRelationship(RelationshipRules.single());
+            var live = fixture.types.registerRelationship(RelationshipTraits.defaults().exclusive());
             assertNull(live.getDescriptor().id());
 
             relationships.addTarget(fixture.store, source, live, liveTarget);
@@ -512,7 +546,7 @@ class RelationshipPersistenceTest {
 
             try (var restored = new Fixture()) {
                 var restoredSaved = restored.persistent("relwind:test/kept");
-                var restoredLive = restored.types.registerRelationship(RelationshipRules.single());
+                var restoredLive = restored.types.registerRelationship(RelationshipTraits.defaults().exclusive());
                 var target = restored.add(savedId);
                 var sourceRef = restored.add(savedSource);
                 restored.persistence.restore(sourceRef);
@@ -622,7 +656,7 @@ class RelationshipPersistenceTest {
             var target = fixture.add(targetId);
             var type = fixture.types.registerRelationship(
                 "relwind:test/remove-on-transfer",
-                RelationshipRules.multiple().retainOnDeactivation());
+                RelationshipTraits.defaults().retainOnDeactivation());
             relationships.addTarget(fixture.store, source, type, target);
 
             fixture.tracker.onEntityUnloaded(
@@ -645,7 +679,7 @@ class RelationshipPersistenceTest {
             var target = fixture.add(targetId);
             var type = fixture.types.registerRelationship(
                 "relwind:test/unloading-source",
-                RelationshipRules.multiple().retainOnDeactivation());
+                RelationshipTraits.defaults().retainOnDeactivation());
             relationships.addTarget(fixture.store, source, type, target);
             var events = new ArrayList<String>();
             fixture.registry.registerSystem(new RelationshipChangeSystem<Object, Void>(type) {
@@ -691,7 +725,7 @@ class RelationshipPersistenceTest {
             var target = fixture.add(targetId);
             var type = fixture.types.registerRelationship(
                 "relwind:test/parked-source",
-                RelationshipRules.multiple().retainOnDeactivation());
+                RelationshipTraits.defaults().retainOnDeactivation());
             relationships.addTarget(fixture.store, source, type, target);
 
             var sourceHolder = fixture.store.removeEntity(source, RemoveReason.UNLOAD);
@@ -749,7 +783,7 @@ class RelationshipPersistenceTest {
             var target = fixture.add(targetId);
             var type = fixture.types.registerRelationship(
                 "relwind:test/envelope",
-                RelationshipRules.single().retainOnDeactivation());
+                RelationshipTraits.defaults().exclusive().retainOnDeactivation());
             relationships.addTarget(fixture.store, source, type, target);
             var unowned = savedRecord(type.getDescriptor().id(), UUID.randomUUID(), "FutureDisposition");
             var content = fixture.store.getComponent(source, fixture.persistence.getComponentType()).getContent();
@@ -851,7 +885,7 @@ class RelationshipPersistenceTest {
                 "relwind:test/payload",
                 BsonDocument.class,
                 Codec.BSON_DOCUMENT,
-                RelationshipRules.single().retainOnTransfer().retainOnDeactivation());
+                RelationshipTraits.defaults().exclusive().retainOnTransfer().retainOnDeactivation());
             var unknown = savedRecord(type.getDescriptor().id(), targetId, "FutureDisposition")
                 .append("Payload", BsonDocument.parse("{original: [9]}"));
             var unreadable = savedRecord(type.getDescriptor().id(), targetId, "PreserveSource")
@@ -1188,7 +1222,7 @@ class RelationshipPersistenceTest {
                 "relwind:test/slotted",
                 Slot.class,
                 Slot.CODEC,
-                RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+                RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
             var source = fixture.add(UUID.randomUUID());
             var target = fixture.add(UUID.randomUUID());
             relationships.addTarget(fixture.store, source, slotted, target, new Slot(5));
@@ -1230,7 +1264,7 @@ class RelationshipPersistenceTest {
         @Nullable Codec<T> codec
     ) {
         return types.registerRelationship(id, dataClass, codec,
-            RelationshipRules.single().retainOnTransfer().retainOnDeactivation());
+            RelationshipTraits.defaults().exclusive().retainOnTransfer().retainOnDeactivation());
     }
 
     @Nullable
@@ -1302,9 +1336,9 @@ class RelationshipPersistenceTest {
             return ref;
         }
 
-        /// The same rules make a persistent type with an id and a runtime type without one.
-        private static final RelationshipRules RETAINING =
-            RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation();
+        /// The same traits make a persistent type with an id and a runtime type without one.
+        private static final RelationshipTraits RETAINING =
+            RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation();
 
         private GenericRelationshipType<Object, Object, Void> persistent(String id) {
             return types.registerRelationship(id, RETAINING);
@@ -1461,7 +1495,7 @@ class RelationshipPersistenceTest {
             var anchoredTo = linked.entityTypes.registerRelationship(
                 "relwind:test/anchoredTo",
                 linked.blockTypes,
-                RelationshipRules.multiple());
+                RelationshipTraits.defaults());
             var source = linked.entity("source");
             var block = linked.block(7);
 
@@ -1485,7 +1519,7 @@ class RelationshipPersistenceTest {
             var anchoredTo = linked.entityTypes.registerRelationship(
                 "relwind:test/anchoredTo",
                 linked.blockTypes,
-                RelationshipRules.multiple());
+                RelationshipTraits.defaults());
             var source = linked.entity("source");
             var block = linked.block(7);
             relationships.addTarget(linked.world.entityStore(), source, anchoredTo, block);
@@ -1513,7 +1547,7 @@ class RelationshipPersistenceTest {
             var anchoredTo = linked.entityTypes.registerRelationship(
                 "relwind:test/anchoredTo",
                 linked.blockTypes,
-                RelationshipRules.multiple());
+                RelationshipTraits.defaults());
             var source = linked.entity("source");
             var removed = linked.block(7);
             var kept = linked.block(8);
@@ -1553,7 +1587,7 @@ class RelationshipPersistenceTest {
             var anchoredTo = linked.entityTypes.registerRelationship(
                 "relwind:test/anchoredTo",
                 linked.blockTypes,
-                RelationshipRules.single().cascadeSource());
+                RelationshipTraits.defaults().exclusive().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
             var source = linked.entity("source");
             var removed = linked.block(7);
             relationships.addTarget(linked.world.entityStore(), source, anchoredTo, removed);
@@ -1591,7 +1625,7 @@ class RelationshipPersistenceTest {
             var anchoredTo = linked.entityTypes.registerRelationship(
                 "relwind:test/anchoredTo",
                 linked.blockTypes,
-                RelationshipRules.single().cascadeSource());
+                RelationshipTraits.defaults().exclusive().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
             // the block installation reads integer identities, and this record names a String target
             var unreadable = new LinkRecord(anchoredTo.getDescriptor().id(), Codec.STRING, "7",
                 LinkRecord.CASCADE_SOURCE, "CHUNK_POSITIONS");
@@ -1647,7 +1681,7 @@ class RelationshipPersistenceTest {
             var anchoredTo = entityTypes.registerRelationship(
                 "relwind:test/anchoredTo",
                 blockTypes,
-                RelationshipRules.single().cascadeSource());
+                RelationshipTraits.defaults().exclusive().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
             var metadata = new RelationshipMetadata<Entities>();
             metadata.addRecord(new LinkRecord(anchoredTo.getDescriptor().id(), Codec.INTEGER, 7,
                 LinkRecord.CASCADE_SOURCE, "CHUNK_POSITIONS"));
@@ -1676,10 +1710,10 @@ class RelationshipPersistenceTest {
             bridgeSaved.getArray("Links").get(0).asDocument().getString("TargetInstallation").getValue());
         try (var linked = new LinkedInstallations()) {
             var same = linked.entityTypes.registerRelationship(
-                "relwind:test/baselineSame", String.class, Codec.STRING, RelationshipRules.single());
+                "relwind:test/baselineSame", String.class, Codec.STRING, RelationshipTraits.defaults().exclusive());
             var bridge = linked.entityTypes.registerRelationship(
                 "relwind:test/baselineBridge", linked.blockTypes, String.class, Codec.STRING,
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
             var sameTarget = linked.entity("same-target");
             var bridgeTarget = linked.block(7);
 

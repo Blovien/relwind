@@ -39,7 +39,7 @@ class RelationshipFetchTest {
     void fetchReturnsZeroOrManyMatchesAndReusesItsBorrowedView() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(FollowData.class, RelationshipRules.multiple());
+            var follows = types.registerRelationship(FollowData.class, RelationshipTraits.defaults());
             var alice = fixture.addEntity(new Position(1, 2), null);
             var query = RelationshipQuery.of(follows, fixture.positionType());
             var batches = new ArrayList<RelationshipResults<Object, FollowData>>();
@@ -78,7 +78,7 @@ class RelationshipFetchTest {
     void rowsExpireBeforeTheNextFetchReusesStorageForFewerMatches() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(FollowData.class, RelationshipRules.multiple());
+            var follows = types.registerRelationship(FollowData.class, RelationshipTraits.defaults());
             var alice = fixture.addEntity(new Position(1, 2), null);
             var bob = fixture.addEntity(new Position(3, 4), null);
             var carol = fixture.addEntity(new Position(5, 6), null);
@@ -131,7 +131,7 @@ class RelationshipFetchTest {
     void fetchReadsTheLinkDataOfASingleTargetTypeUnderEachQueryShape(QueryShape shape) {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var mounted = types.registerRelationship(Saddle.class, RelationshipRules.single());
+            var mounted = types.registerRelationship(Saddle.class, RelationshipTraits.defaults().exclusive());
             var rider = fixture.addEntity(new Position(1, 2), null);
             var mount = fixture.addEntity(new Position(3, 4), new Player("mount"));
             var saddle = new Saddle(1);
@@ -263,7 +263,7 @@ class RelationshipFetchTest {
 
     private static Chain chain(StoreFixture fixture, String id, int links) {
         var types = new RelationshipTypeRegistry<>(fixture.registry());
-        var type = types.registerRelationship(id, RelationshipRules.multiple());
+        var type = types.registerRelationship(id, RelationshipTraits.defaults());
         var entities = new ArrayList<Ref<Object>>(links + 1);
         entities.add(fixture.addEntity(new Position(0, 0), null));
         for (int i = 1; i <= links; i++) {

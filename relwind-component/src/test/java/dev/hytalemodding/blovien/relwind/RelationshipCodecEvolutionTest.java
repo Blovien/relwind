@@ -289,7 +289,7 @@ class RelationshipCodecEvolutionTest {
         Codec<SlotData> codec
     ) {
         return types.registerRelationship(EVOLUTION_ID, SlotData.class, codec,
-            RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+            RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
     }
 
     private static BsonDocument content(BsonDocument entity) {

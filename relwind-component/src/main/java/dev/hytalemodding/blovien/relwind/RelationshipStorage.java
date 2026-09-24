@@ -116,7 +116,7 @@ final class RelationshipStorage {
         if (outgoing.size() != 1) {
             outgoing.remove(target);
             sourceStore.replaceComponent(source, type.getSourceType(), outgoing);
-        } else if (type.getDescriptor().getSourceRetention() == RelationshipRules.SourceRetention.RETAIN) {
+        } else if (type.getDescriptor().getSourceRetention() == RelationshipTraits.SourceRetention.RETAIN) {
             outgoing.clear();
             sourceStore.replaceComponent(source, type.getSourceType(), outgoing);
         } else {

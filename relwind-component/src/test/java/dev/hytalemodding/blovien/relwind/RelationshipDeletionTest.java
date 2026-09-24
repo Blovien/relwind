@@ -47,7 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Deleting a linked entity removes every link that named it and cascades into the sources whose rules
+/// Deleting a linked entity removes every link that named it and cascades into the sources whose traits
 /// ask for it, reaching each entity once.
 class RelationshipDeletionTest {
     private static final Relationships relationships = new Relationships();
@@ -57,7 +57,7 @@ class RelationshipDeletionTest {
         try (var fixture = new Fixture()) {
             var type = fixture.types.registerRelationship(
                 StringBuilder.class,
-                RelationshipRules.single().retainOnTransfer().retainOnDeactivation().cascadeSource());
+                RelationshipTraits.defaults().exclusive().retainOnTransfer().retainOnDeactivation().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
             var store = fixture.store();
             var tracker = fixture.tracker;
             var first = fixture.entity("first");
@@ -417,20 +417,20 @@ class RelationshipDeletionTest {
     }
 
     private static GenericRelationshipType<Object, Object, Void> register(RelationshipTypeRegistry<Object> types, String id) {
-        return types.registerRelationship("relwind:test/" + id, RelationshipRules.single());
+        return types.registerRelationship("relwind:test/" + id, RelationshipTraits.defaults().exclusive());
     }
 
     private static GenericRelationshipType<Object, Object, Void> registerCascade(
         RelationshipTypeRegistry<Object> types,
         String id
     ) {
-        return types.registerRelationship("relwind:test/" + id, RelationshipRules.single().cascadeSource());
+        return types.registerRelationship("relwind:test/" + id, RelationshipTraits.defaults().exclusive().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
     }
 
     @Test
     void aCascadingDeletionOfASourceAnnouncesItsRemovedDataAndNoDataChange() {
         try (var fixture = new Fixture()) {
-            var mounted = fixture.types.registerRelationship(Saddle.class, RelationshipRules.single().cascadeSource());
+            var mounted = fixture.types.registerRelationship(Saddle.class, RelationshipTraits.defaults().exclusive().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
             var store = fixture.store();
             var rider = fixture.entity("rider");
             var mount = fixture.entity("mount");
@@ -479,7 +479,7 @@ class RelationshipDeletionTest {
         try (var fixture = new Fixture()) {
             var mounted = fixture.types.registerRelationship(
                 Saddle.class,
-                RelationshipRules.single().retainOnDeactivation().cascadeSource());
+                RelationshipTraits.defaults().exclusive().retainOnDeactivation().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
             var store = fixture.store();
             var rider = fixture.entity("rider");
             var mount = fixture.entity("mount");
@@ -697,7 +697,7 @@ class RelationshipDeletionTest {
             var world = fixture.addWorld("overworld");
             var entityTypes = entityTypes(fixture);
             var blockTypes = blockTypes(fixture);
-            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipRules.multiple());
+            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipTraits.defaults());
 
             var first = fixture.addEntity(world);
             var second = fixture.addEntity(world);
@@ -728,7 +728,7 @@ class RelationshipDeletionTest {
             var world = fixture.addWorld("overworld");
             var entityTypes = entityTypes(fixture);
             var blockTypes = blockTypes(fixture);
-            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipRules.multiple());
+            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipTraits.defaults());
 
             var unloading = fixture.addEntity(world);
             var staying = fixture.addEntity(world);
@@ -760,8 +760,8 @@ class RelationshipDeletionTest {
             var blockTypes = blockTypes(fixture);
             var anchoredTo = entityTypes.registerRelationship(
                 blockTypes,
-                RelationshipRules.multiple().cascadeSource());
-            var carries = blockTypes.registerRelationship(entityTypes, RelationshipRules.multiple());
+                RelationshipTraits.defaults().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
+            var carries = blockTypes.registerRelationship(entityTypes, RelationshipTraits.defaults());
 
 
             var anchored = fixture.addEntity(world);
@@ -788,7 +788,7 @@ class RelationshipDeletionTest {
             var world = fixture.addWorld("overworld");
             var entityTypes = entityTypes(fixture);
             var blockTypes = blockTypes(fixture);
-            var carries = blockTypes.registerRelationship(entityTypes, RelationshipRules.multiple());
+            var carries = blockTypes.registerRelationship(entityTypes, RelationshipTraits.defaults());
 
             var carrier = fixture.addBlock(world);
             var passenger = fixture.addEntity(world);

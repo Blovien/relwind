@@ -52,7 +52,7 @@ class MultipleTargetRelationshipsTest {
         var registry = new ComponentRegistry<Object>();
         try {
             var types = new RelationshipTypeRegistry<>(registry);
-            var type = register(types, "store-tracker", RelationshipRules.TargetDeletion.PRESERVE_SOURCE);
+            var type = register(types, "store-tracker", RelationshipTraits.OnDeleteTarget.REMOVE);
             var unloaded = createUnloadedStore(registry, type);
             var liveStore = registry.addStore(new Object(), EmptyResourceStorage.get());
 
@@ -213,7 +213,7 @@ class MultipleTargetRelationshipsTest {
         var registry = new ComponentRegistry<Object>();
         try {
             var types = new RelationshipTypeRegistry<>(registry);
-            var preserves = register(types, "preserves", RelationshipRules.TargetDeletion.PRESERVE_SOURCE);
+            var preserves = register(types, "preserves", RelationshipTraits.OnDeleteTarget.REMOVE);
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
             var preservedSource = addEntity(store);
             var deletedTarget = addEntity(store);
@@ -233,11 +233,11 @@ class MultipleTargetRelationshipsTest {
     }
 
     @Test
-    void deletingATargetDeletesTheWholeSourceWhenTheRuleCascades() {
+    void deletingATargetDeletesTheWholeSourceWhenTheTraitCascades() {
         var registry = new ComponentRegistry<Object>();
         try {
             var types = new RelationshipTypeRegistry<>(registry);
-            var cascades = register(types, "cascades", RelationshipRules.TargetDeletion.CASCADE_SOURCE);
+            var cascades = register(types, "cascades", RelationshipTraits.OnDeleteTarget.DELETE);
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
             var cascadingSource = addEntity(store);
             var cascadingTarget = addEntity(store);
@@ -451,7 +451,7 @@ class MultipleTargetRelationshipsTest {
         var registry = new ComponentRegistry<Object>();
         try {
             var types = new RelationshipTypeRegistry<>(registry);
-            var type = register(types, "drain-callback", RelationshipRules.TargetDeletion.PRESERVE_SOURCE);
+            var type = register(types, "drain-callback", RelationshipTraits.OnDeleteTarget.REMOVE);
             var listener = new TraversingAddListener(type);
             registry.registerSystem(listener);
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
@@ -506,7 +506,7 @@ class MultipleTargetRelationshipsTest {
         var registry = new ComponentRegistry<Object>();
         try {
             var types = new RelationshipTypeRegistry<>(registry);
-            var type = register(types, "ticks", RelationshipRules.TargetDeletion.PRESERVE_SOURCE);
+            var type = register(types, "ticks", RelationshipTraits.OnDeleteTarget.REMOVE);
             var system = new RecordingSystem(type);
             registry.registerSystem(system);
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
@@ -624,11 +624,10 @@ class MultipleTargetRelationshipsTest {
     private static GenericRelationshipType<Object, Object, LinkData> register(
         RelationshipTypeRegistry<Object> types,
         String name,
-        RelationshipRules.TargetDeletion targetDeletion
+        RelationshipTraits.OnDeleteTarget onDeleteTarget
     ) {
-        var rules = RelationshipRules.multiple();
-        if (targetDeletion == RelationshipRules.TargetDeletion.CASCADE_SOURCE) rules = rules.cascadeSource();
-        return types.registerRelationship("relwind:test/" + name, LinkData.class, null, rules);
+        var traits = RelationshipTraits.defaults().onDeleteTarget(onDeleteTarget);
+        return types.registerRelationship("relwind:test/" + name, LinkData.class, null, traits);
     }
 
     private static Ref<Object> addEntity(Store<Object> store) {
@@ -667,7 +666,7 @@ class MultipleTargetRelationshipsTest {
         private final GenericRelationshipType<Object, Object, LinkData> type = register(
             types,
             "multiple",
-            RelationshipRules.TargetDeletion.PRESERVE_SOURCE
+            RelationshipTraits.OnDeleteTarget.REMOVE
         );
         private final Store<Object> store = registry.addStore(new Object(), EmptyResourceStorage.get());
 

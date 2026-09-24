@@ -22,6 +22,7 @@ import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.component.system.RefChangeSystem;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.params.provider.EnumSource;
 
 import javax.annotation.Nonnull;
@@ -254,7 +255,7 @@ class LinkDataTest {
                 "relwind:test/logical-notifications",
                 MutableData.class,
                 null,
-                RelationshipRules.multiple().retainSourceStorage());
+                RelationshipTraits.defaults().retainSourceStorage());
             var oracle = new CallbackStateOracle(type);
             registry.registerSystem(oracle);
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
@@ -306,9 +307,9 @@ class LinkDataTest {
     }
 
     @ParameterizedTest
-    @EnumSource(RelationshipRules.Cardinality.class)
-    void putAnnouncesEveryDataChangeEvenForTheSameInstance(RelationshipRules.Cardinality cardinality) {
-        try (var fixture = new SignalFixture(rules(cardinality))) {
+    @ValueSource(booleans = {true, false})
+    void putAnnouncesEveryDataChangeEvenForTheSameInstance(boolean exclusive) {
+        try (var fixture = new SignalFixture(traits(exclusive))) {
             var source = fixture.add();
             var target = fixture.add();
             var initial = signalData(1);
@@ -339,10 +340,10 @@ class LinkDataTest {
         }
     }
 
-    private static RelationshipRules rules(RelationshipRules.Cardinality cardinality) {
-        return cardinality == RelationshipRules.Cardinality.SINGLE_TARGET
-            ? RelationshipRules.single()
-            : RelationshipRules.multiple();
+    private static RelationshipTraits traits(boolean exclusive) {
+        return exclusive
+            ? RelationshipTraits.defaults().exclusive()
+            : RelationshipTraits.defaults();
     }
 
     @Test
@@ -411,7 +412,7 @@ class LinkDataTest {
 
     @Test
     void retainedSourceStorageKeepsAnEmptyOutgoingLink() {
-        try (var fixture = new MountFixture(RelationshipRules.single().retainSourceStorage())) {
+        try (var fixture = new MountFixture(RelationshipTraits.defaults().exclusive().retainSourceStorage())) {
             var rider = fixture.add();
             var mount = fixture.add();
             relationships.addTarget(fixture.store, rider, fixture.type, mount, new MountData(1));
@@ -460,7 +461,7 @@ class LinkDataTest {
                 "relwind:test/link-data",
                 MutableData.class,
                 null,
-                RelationshipRules.multiple());
+                RelationshipTraits.defaults());
             changes = new DataChanges(type);
             registry.registerSystem(changes);
             store = registry.addStore(new Object(), EmptyResourceStorage.get());
@@ -522,13 +523,13 @@ class LinkDataTest {
         private final Store<Object> store;
         private int persistenceMarks;
 
-        private SignalFixture(RelationshipRules cardinality) {
+        private SignalFixture(RelationshipTraits traits) {
             installation = RelationshipInstallation.on(registry, identities::get, Codec.UUID_BINARY)
                 .persistence((ignoredStore, ignoredSource) -> persistenceMarks++,
                     ignoredHolder -> { }, ignoredId -> false)
                 .install();
             type = installation.types().registerRelationship(
-                "relwind:test/put-signal", SignalData.class, SignalData.CODEC, cardinality);
+                "relwind:test/put-signal", SignalData.class, SignalData.CODEC, traits);
             observer = new SetRecorder(type);
             registry.registerSystem(observer);
             store = registry.addStore(new Object(), EmptyResourceStorage.get());
@@ -620,11 +621,11 @@ class LinkDataTest {
         private final Store<Object> store;
 
         private MountFixture() {
-            this(RelationshipRules.single());
+            this(RelationshipTraits.defaults().exclusive());
         }
 
-        private MountFixture(RelationshipRules policies) {
-            type = new RelationshipTypeRegistry<>(registry).registerRelationship(MountData.class, policies);
+        private MountFixture(RelationshipTraits traits) {
+            type = new RelationshipTypeRegistry<>(registry).registerRelationship(MountData.class, traits);
             observer = new MountRecorder(type);
             registry.registerSystem(observer);
             store = registry.addStore(new Object(), EmptyResourceStorage.get());

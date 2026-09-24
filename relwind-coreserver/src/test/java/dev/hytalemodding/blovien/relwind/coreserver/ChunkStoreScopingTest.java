@@ -10,7 +10,7 @@ import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.math.util.ChunkUtil;
 import com.hypixel.hytale.server.core.universe.world.storage.ChunkStore;
-import dev.hytalemodding.blovien.relwind.RelationshipRules;
+import dev.hytalemodding.blovien.relwind.RelationshipTraits;
 import dev.hytalemodding.blovien.relwind.Relationships;
 import org.bson.BsonDocument;
 import org.joml.Vector3i;
@@ -55,7 +55,7 @@ class ChunkStoreScopingTest {
     void aLinkInEachStoreKeepsItsOwnStoresTarget() {
         try (var fixture = new ChunkStoreFixture()) {
             var anchoredTo = fixture.installation().getRelationshipTypeRegistry()
-                .registerRelationship(RelationshipRules.single().retainOnDeactivation());
+                .registerRelationship(RelationshipTraits.defaults().exclusive().retainOnDeactivation());
             var first = fixture.store();
             var second = fixture.secondStore();
             var firstSource = addBlockAt(fixture, first, 2, 5, -3, INDEX);
@@ -78,7 +78,7 @@ class ChunkStoreScopingTest {
     void breakingABlockInOneStoreLeavesTheOtherStoreAlone() {
         try (var fixture = new ChunkStoreFixture()) {
             var anchoredTo = fixture.installation().getRelationshipTypeRegistry()
-                .registerRelationship(RelationshipRules.single().retainOnDeactivation());
+                .registerRelationship(RelationshipTraits.defaults().exclusive().retainOnDeactivation());
             var first = fixture.store();
             var second = fixture.secondStore();
             var broken = addBlockAt(fixture, first, 2, 5, -3, INDEX);
@@ -102,7 +102,7 @@ class ChunkStoreScopingTest {
         var saved = savedSourceRecords();
         try (var fixture = new ChunkStoreFixture()) {
             var anchoredTo = fixture.installation().getRelationshipTypeRegistry()
-                .registerRelationship(ANCHORED_TO, RelationshipRules.single());
+                .registerRelationship(ANCHORED_TO, RelationshipTraits.defaults().exclusive());
             var first = fixture.store();
             var second = fixture.secondStore();
             addBlockAt(fixture, second, 2, 6, -3, TARGET_INDEX);
@@ -121,7 +121,7 @@ class ChunkStoreScopingTest {
         var saved = savedSourceRecords();
         try (var fixture = new ChunkStoreFixture()) {
             var anchoredTo = fixture.installation().getRelationshipTypeRegistry()
-                .registerRelationship(ANCHORED_TO, RelationshipRules.single());
+                .registerRelationship(ANCHORED_TO, RelationshipTraits.defaults().exclusive());
             var first = fixture.store();
             var second = fixture.secondStore();
             addBlockAt(fixture, first, 2, 6, -3, TARGET_INDEX);
@@ -144,7 +144,7 @@ class ChunkStoreScopingTest {
     private static BsonDocument savedSourceRecords() {
         try (var fixture = new ChunkStoreFixture()) {
             var anchoredTo = fixture.installation().getRelationshipTypeRegistry()
-                .registerRelationship(ANCHORED_TO, RelationshipRules.single());
+                .registerRelationship(ANCHORED_TO, RelationshipTraits.defaults().exclusive());
             var store = fixture.store();
             var source = addBlockAt(fixture, store, 2, 5, -3, INDEX);
             relationships.addTarget(store, source, anchoredTo, addBlockAt(fixture, store, 2, 6, -3, TARGET_INDEX));

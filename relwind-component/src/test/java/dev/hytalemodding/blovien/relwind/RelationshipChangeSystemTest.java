@@ -33,8 +33,8 @@ class RelationshipChangeSystemTest {
     void unregisteringOneTypeKeepsTheSharedEventUntilItsLastObserverIsRemoved() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var first = types.registerRelationship(StringBuilder.class, RelationshipRules.single());
-            var second = types.registerRelationship(StringBuilder.class, RelationshipRules.single());
+            var first = types.registerRelationship(StringBuilder.class, RelationshipTraits.defaults().exclusive());
+            var second = types.registerRelationship(StringBuilder.class, RelationshipTraits.defaults().exclusive());
             var firstObserver = new RelationshipChangeSystem<Object, StringBuilder>(first) { };
             var secondObserver = new RecordingObserver(second);
             fixture.registry().registerSystem(firstObserver);
@@ -60,8 +60,8 @@ class RelationshipChangeSystemTest {
     }
 
     @ParameterizedTest
-    @EnumSource(RelationshipRules.SourceRetention.class)
-    void mutationsEmitOnlyTheirLogicalEffects(RelationshipRules.SourceRetention retention) {
+    @EnumSource(RelationshipTraits.SourceRetention.class)
+    void mutationsEmitOnlyTheirLogicalEffects(RelationshipTraits.SourceRetention retention) {
         try (var fixture = new StoreFixture()) {
             var type = new RelationshipTypeRegistry<>(fixture.registry())
                 .registerRelationship(StringBuilder.class, multipleWith(retention));
@@ -100,9 +100,9 @@ class RelationshipChangeSystemTest {
         }
     }
 
-    private static RelationshipRules multipleWith(RelationshipRules.SourceRetention retention) {
-        var rules = RelationshipRules.multiple();
-        return retention == RelationshipRules.SourceRetention.RETAIN ? rules.retainSourceStorage() : rules;
+    private static RelationshipTraits multipleWith(RelationshipTraits.SourceRetention retention) {
+        var traits = RelationshipTraits.defaults();
+        return retention == RelationshipTraits.SourceRetention.RETAIN ? traits.retainSourceStorage() : traits;
     }
 
     @Test
@@ -110,7 +110,7 @@ class RelationshipChangeSystemTest {
         try (var fixture = new StoreFixture()) {
             var type = new RelationshipTypeRegistry<>(fixture.registry()).registerRelationship(
                 StringBuilder.class,
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
             var source = fixture.addEntity(new Position(1, 2), null);
             var target = fixture.addEntity(new Position(3, 4), null);
             var original = new StringBuilder("original");
@@ -150,7 +150,7 @@ class RelationshipChangeSystemTest {
     void additionObservesBothDirectionsWithLiveData() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = types.registerRelationship(StringBuilder.class, RelationshipRules.multiple());
+            var type = types.registerRelationship(StringBuilder.class, RelationshipTraits.defaults());
             var source = fixture.addEntity(new Position(1, 2), null);
             var target = fixture.addEntity(new Position(3, 4), null);
             var data = new StringBuilder("initial");

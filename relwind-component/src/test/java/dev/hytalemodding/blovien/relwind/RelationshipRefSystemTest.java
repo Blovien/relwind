@@ -110,7 +110,7 @@ class RelationshipRefSystemTest {
     }
 
     private static GenericRelationshipType<Object, Object, Void> register(RelationshipTypeRegistry<Object> types) {
-        return types.registerRelationship(RelationshipRules.multiple());
+        return types.registerRelationship(RelationshipTraits.defaults());
     }
 
     private record Delivery(String phase, Object reason, List<Ref<Object>> targets) {

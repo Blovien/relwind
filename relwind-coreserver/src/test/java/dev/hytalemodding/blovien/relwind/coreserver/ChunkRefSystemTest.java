@@ -7,7 +7,7 @@ package dev.hytalemodding.blovien.relwind.coreserver;
 import com.hypixel.hytale.component.AddReason;
 import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.math.util.ChunkUtil;
-import dev.hytalemodding.blovien.relwind.RelationshipRules;
+import dev.hytalemodding.blovien.relwind.RelationshipTraits;
 import dev.hytalemodding.blovien.relwind.Relationships;
 import org.joml.Vector3i;
 import org.junit.jupiter.api.Test;
@@ -76,7 +76,7 @@ class ChunkRefSystemTest {
     void aBlockEntityThatHoldsALiveLinkLeavesWithoutWritingWhileTheStoreProcesses() {
         try (var fixture = new ChunkStoreFixture()) {
             var anchoredTo = fixture.installation().getRelationshipTypeRegistry()
-                .registerRelationship(RelationshipRules.single().retainOnDeactivation());
+                .registerRelationship(RelationshipTraits.defaults().exclusive().retainOnDeactivation());
             var section = fixture.addSection(2, 5, -3, AddReason.LOAD);
             var source = fixture.addBlock(section, INDEX, AddReason.LOAD);
             var holding = fixture.addSection(2, 6, -3, AddReason.LOAD);
@@ -113,7 +113,7 @@ class ChunkRefSystemTest {
         var saved = savedSourceRecords();
         try (var fixture = new ChunkStoreFixture()) {
             var anchoredTo = fixture.installation().getRelationshipTypeRegistry()
-                .registerRelationship("relwind:test/anchored-to", RelationshipRules.single());
+                .registerRelationship("relwind:test/anchored-to", RelationshipTraits.defaults().exclusive());
 
             var section = fixture.loadSection(saved, 2, 5, -3);
 
@@ -126,7 +126,7 @@ class ChunkRefSystemTest {
     private static BsonDocument savedSourceRecords() {
         try (var fixture = new ChunkStoreFixture()) {
             var anchoredTo = fixture.installation().getRelationshipTypeRegistry()
-                .registerRelationship("relwind:test/anchored-to", RelationshipRules.single());
+                .registerRelationship("relwind:test/anchored-to", RelationshipTraits.defaults().exclusive());
             var section = fixture.addSection(2, 5, -3, AddReason.LOAD);
             var source = fixture.addBlock(section, INDEX, AddReason.LOAD);
             var holding = fixture.addSection(2, 6, -3, AddReason.LOAD);

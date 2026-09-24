@@ -382,8 +382,8 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
                 continue;
             }
             if (link.targetId.equals(key) && !link.sourceId.equals(key)) {
-                link.cascade = link.type.getDescriptor().getTargetDeletion()
-                    == RelationshipRules.TargetDeletion.CASCADE_SOURCE;
+                link.cascade = link.type.getDescriptor().getOnDeleteTarget()
+                    == RelationshipTraits.OnDeleteTarget.DELETE;
             }
             removeByPolicy(link, ref);
         }
@@ -561,7 +561,7 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
             throw new IllegalStateException("Relationship type '" + type.getDescriptor().id()
                 + "' requires an installed tracker and stable identities on both sides");
         }
-        if (type.getDescriptor().getCardinality() == RelationshipRules.Cardinality.SINGLE_TARGET) {
+        if (type.getDescriptor().isExclusive()) {
             for (var link : getOutgoing(sourceId)) {
                 if (link.type == type && !link.resolved && !link.targetId.equals(targetId)) {
                     throw new IllegalStateException(
@@ -658,7 +658,7 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         }
         var link = find(type, sourceId, targetId);
         if (link == null) {
-            if (type.getDescriptor().getCardinality() == RelationshipRules.Cardinality.SINGLE_TARGET) {
+            if (type.getDescriptor().isExclusive()) {
                 for (var outgoing : getOutgoing(sourceId)) {
                     if (outgoing.type == type) {
                         return;
@@ -1090,8 +1090,8 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
 
     private static boolean retains(RelationshipDescriptor<?, ?> descriptor) {
         return descriptor.isPersistent()
-            || descriptor.getTransfer() == RelationshipRules.Survival.RETAIN
-            || descriptor.getTemporaryDeactivation() == RelationshipRules.Survival.RETAIN;
+            || descriptor.getTransfer() == RelationshipTraits.Survival.RETAIN
+            || descriptor.getTemporaryDeactivation() == RelationshipTraits.Survival.RETAIN;
     }
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
@@ -1099,9 +1099,9 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         return switch (reason) {
             // the links wait for onUnloadResolved
             case PENDING -> true;
-            case TRANSFER -> descriptor.getTransfer() == RelationshipRules.Survival.RETAIN;
+            case TRANSFER -> descriptor.getTransfer() == RelationshipTraits.Survival.RETAIN;
             case DEACTIVATION ->
-                descriptor.getTemporaryDeactivation() == RelationshipRules.Survival.RETAIN;
+                descriptor.getTemporaryDeactivation() == RelationshipTraits.Survival.RETAIN;
         };
     }
 

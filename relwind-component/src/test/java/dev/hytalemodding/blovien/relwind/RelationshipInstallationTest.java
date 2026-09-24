@@ -150,7 +150,7 @@ class RelationshipInstallationTest {
     void closingOneRegistryLeavesTheInstallationItsSiblingRegistryStillUses() {
         try (var installation = new Installation()) {
             var sibling = new RelationshipTypeRegistry<>(installation.registry);
-            var follows = sibling.registerRelationship(RelationshipRules.single());
+            var follows = sibling.registerRelationship(RelationshipTraits.defaults().exclusive());
             var source = installation.add(UUID.randomUUID());
             var target = installation.add(UUID.randomUUID());
 
@@ -174,7 +174,7 @@ class RelationshipInstallationTest {
             var sibling = new RelationshipTypeRegistry<>(installation.registry);
             sibling.registerRelationship(
                 "relwind:test/follows",
-                RelationshipRules.single().retainOnTransfer());
+                RelationshipTraits.defaults().exclusive().retainOnTransfer());
 
             sibling.installPersistence(installation.types.getTracker());
 
@@ -226,7 +226,7 @@ class RelationshipInstallationTest {
             var sibling = new RelationshipTypeRegistry<>(installation.registry);
             var follows = sibling.registerRelationship(
                 "relwind:test/follows",
-                RelationshipRules.single().retainOnTransfer());
+                RelationshipTraits.defaults().exclusive().retainOnTransfer());
             sibling.installPersistence(tracker);
             var source = installation.add(UUID.randomUUID());
             var targetId = UUID.randomUUID();
@@ -252,7 +252,7 @@ class RelationshipInstallationTest {
             var sibling = new RelationshipTypeRegistry<>(installation.registry);
             var follows = sibling.registerRelationship(
                 "relwind:test/follows",
-                RelationshipRules.single().retainOnTransfer());
+                RelationshipTraits.defaults().exclusive().retainOnTransfer());
             var persistence = sibling.installPersistence(tracker);
             var sourceId = UUID.randomUUID();
             var source = installation.add(sourceId);

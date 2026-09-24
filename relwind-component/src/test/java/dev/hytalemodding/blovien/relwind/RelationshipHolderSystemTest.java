@@ -119,7 +119,7 @@ class RelationshipHolderSystemTest {
     void theRemovalCallbackReadsTheLinkDataFromTheHolderThatCarriesTheOutgoingLink() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var mounted = types.registerRelationship(Saddle.class, RelationshipRules.single());
+            var mounted = types.registerRelationship(Saddle.class, RelationshipTraits.defaults().exclusive());
             var system = new MountedHolderSystem(fixture.positionType(), fixture.playerType(), mounted);
             fixture.registry().registerSystem(system);
             var rider = fixture.addEntity(new Position(1, 2), null);
@@ -139,7 +139,7 @@ class RelationshipHolderSystemTest {
     void theAddCallbackReadsTheLinkDataFromTheHolderThatCarriesTheOutgoingLink() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var mounted = types.registerRelationship(Saddle.class, RelationshipRules.single());
+            var mounted = types.registerRelationship(Saddle.class, RelationshipTraits.defaults().exclusive());
             var system = new MountedHolderSystem(fixture.positionType(), fixture.playerType(), mounted);
             fixture.registry().registerSystem(system);
             var rider = fixture.addEntity(new Position(1, 2), null);
@@ -159,7 +159,7 @@ class RelationshipHolderSystemTest {
     private static GenericRelationshipType<Object, Object, Void> register(RelationshipTypeRegistry<Object> types, String id) {
         return types.registerRelationship(
             id,
-            RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+            RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
     }
 
     public record Saddle(int seat) {

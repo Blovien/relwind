@@ -217,7 +217,7 @@ class RelationshipSystemAdmissionTest {
         private final RelationshipTracker<Object, UUID> tracker = types.installTracker(
             TestPersistenceIdentity.of(identities::get, Codec.UUID_BINARY),
             TestStoreRuntime.inline());
-        private final RelationshipType<Object, Void> type = types.registerRelationship(RelationshipRules.multiple());
+        private final RelationshipType<Object, Void> type = types.registerRelationship(RelationshipTraits.defaults());
         private final Store<Object> store = registry.addStore(new Object(), EmptyResourceStorage.get());
 
         private Ref<Object> add() {

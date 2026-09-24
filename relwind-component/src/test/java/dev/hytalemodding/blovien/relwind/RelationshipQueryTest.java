@@ -63,7 +63,7 @@ class RelationshipQueryTest {
     void fetchReleasesBindingsFromSuccessiveQueryDefinitions() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = types.registerRelationship(RelationshipRules.multiple());
+            var type = types.registerRelationship(RelationshipTraits.defaults());
             var source = fixture.addEntity(new Position(1, 2), null);
             var target = fixture.addEntity(new Position(3, 4), null);
             relationships.addTarget(fixture.store(), source, type, target);
@@ -122,7 +122,7 @@ class RelationshipQueryTest {
     void reachableReleasesVisitedLinkedEntitiesAfterFailureAndDoesNotMarkTheStoreProcessing() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/recovery", RelationshipRules.Cardinality.SINGLE_TARGET);
+            var type = register(types, "relwind:test/recovery", true);
             var start = fixture.addEntity(new Position(0, 0), null);
             var middle = fixture.addEntity(new Position(1, 0), null);
             var end = fixture.addEntity(new Position(2, 0), new Player("match"));
@@ -167,10 +167,10 @@ class RelationshipQueryTest {
     void reachableUsesTheShortestPathAndAllowsFiniteConditionsInBothFilters(RelationshipQuery.Direction direction) {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/paths", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
-            var permission = register(types, "relwind:test/permission", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var marker = register(types, "relwind:test/marker", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var outer = register(types, "relwind:test/outer", RelationshipRules.Cardinality.SINGLE_TARGET);
+            var type = register(types, "relwind:test/paths", false);
+            var permission = register(types, "relwind:test/permission", true);
+            var marker = register(types, "relwind:test/marker", true);
+            var outer = register(types, "relwind:test/outer", true);
             var anchor = fixture.addEntity(new Position(-1, 0), null);
             var start = fixture.addEntity(new Position(0, 0), null);
             var longPath = fixture.addEntity(new Position(1, 0), null);
@@ -219,8 +219,8 @@ class RelationshipQueryTest {
             var identity = identity();
             var tracker = types.installTracker(identity, TestStoreRuntime.inline());
             try {
-                var type = register(types, "relwind:test/allocation", RelationshipRules.Cardinality.SINGLE_TARGET);
-                var outer = register(types, "relwind:test/allocation-outer", RelationshipRules.Cardinality.SINGLE_TARGET);
+                var type = register(types, "relwind:test/allocation", true);
+                var outer = register(types, "relwind:test/allocation-outer", true);
                 var anchor = fixture.addEntity(new Position(-1, 0), null);
                 var start = fixture.addEntity(new Position(0, 0), null);
                 tracker.onEntityLoaded(identity.getIdentity(start.getStore(), start), start);
@@ -255,7 +255,7 @@ class RelationshipQueryTest {
     void reachableRejectsRecursionNestedInItsMatchCondition(DeclarationWrapper wrapper) {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/nested", RelationshipRules.Cardinality.SINGLE_TARGET);
+            var type = register(types, "relwind:test/nested", true);
             var recursive = RelationshipQuery.reachable(type, RelationshipQuery.Direction.OUTGOING, 1, Query.any());
             var nested = wrap(wrapper, type, recursive);
 
@@ -271,7 +271,7 @@ class RelationshipQueryTest {
     void reachableRejectsRecursionNestedInItsThroughCondition(DeclarationWrapper wrapper) {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/nested", RelationshipRules.Cardinality.SINGLE_TARGET);
+            var type = register(types, "relwind:test/nested", true);
             var recursive = RelationshipQuery.reachable(type, RelationshipQuery.Direction.OUTGOING, 1, Query.any());
             var nested = wrap(wrapper, type, recursive);
 
@@ -287,7 +287,7 @@ class RelationshipQueryTest {
     void reachableRejectsAMaxDepthBelowOne(int depth) {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/nested", RelationshipRules.Cardinality.SINGLE_TARGET);
+            var type = register(types, "relwind:test/nested", true);
 
             var failure = assertThrows(IllegalArgumentException.class, () ->
                 RelationshipQuery.reachable(type, RelationshipQuery.Direction.OUTGOING, depth, Query.any()));
@@ -305,8 +305,8 @@ class RelationshipQueryTest {
             var tracker = types.installTracker(identity, TestStoreRuntime.inline());
             try {
                 var type = types.registerRelationship(
-                    RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
-                var outer = register(types, "relwind:test/outer", RelationshipRules.Cardinality.SINGLE_TARGET);
+                    RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
+                var outer = register(types, "relwind:test/outer", true);
                 var anchor = fixture.addEntity(new Position(0, 0), null);
                 var start = fixture.addEntity(new Position(1, 0), null);
                 var middle = fixture.addEntity(new Position(2, 0), null);
@@ -344,7 +344,7 @@ class RelationshipQueryTest {
     void reachableThroughFiltersExpansionButNotTheStartOrMatchingLinkedEntity() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/through", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var type = register(types, "relwind:test/through", false);
             var start = fixture.addEntity(new Position(0, 0), null);
             var middle = fixture.addEntity(new Position(1, 0), new Player("middle"));
             var end = addWeapon(fixture, fixture.registry().registerComponent(Weapon.class, Weapon::new));
@@ -365,7 +365,7 @@ class RelationshipQueryTest {
     void reachableHonorsTheDepthLimitInEitherDirection() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/reaches", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var type = register(types, "relwind:test/reaches", false);
             var start = fixture.addEntity(new Position(0, 0), new Player("start"));
             var middle = fixture.addEntity(new Position(1, 0), null);
             var end = fixture.addEntity(new Position(2, 0), null);
@@ -388,7 +388,7 @@ class RelationshipQueryTest {
     void reachableExcludesTheStartOfACycleAtEveryDepth() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/reaches", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var type = register(types, "relwind:test/reaches", false);
             var start = fixture.addEntity(new Position(0, 0), new Player("start"));
             var middle = fixture.addEntity(new Position(1, 0), null);
             var end = fixture.addEntity(new Position(2, 0), null);
@@ -412,7 +412,7 @@ class RelationshipQueryTest {
     ) {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/enumerate-reaches", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var type = register(types, "relwind:test/enumerate-reaches", false);
             var start = fixture.addEntity(new Position(0, 0), null);
             var near = fixture.addEntity(new Position(1, 0), null);
             var alsoNear = fixture.addEntity(new Position(2, 0), null);
@@ -443,7 +443,7 @@ class RelationshipQueryTest {
     void enumerateReachableExcludesTheStartWhenACycleReachesIt() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/enumerate-cycle", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var type = register(types, "relwind:test/enumerate-cycle", false);
             var start = fixture.addEntity(new Position(0, 0), null);
             var middle = fixture.addEntity(new Position(1, 0), null);
             var end = fixture.addEntity(new Position(2, 0), null);
@@ -470,7 +470,7 @@ class RelationshipQueryTest {
     void enumerateReachableThroughFiltersExpansionButNotTheStartOrReportedLinkedEntities() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/enumerate-through", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var type = register(types, "relwind:test/enumerate-through", false);
             var start = fixture.addEntity(new Position(0, 0), null);
             var open = fixture.addEntity(new Position(1, 0), new Player("open"));
             var closed = fixture.addEntity(new Position(2, 0), null);
@@ -503,7 +503,7 @@ class RelationshipQueryTest {
     void enumerateReachableIsTruncatedOnlyWhenTheDepthLimitOmitsAnUnvisitedLinkedEntity() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/enumerate-cut", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var type = register(types, "relwind:test/enumerate-cut", false);
             var start = fixture.addEntity(new Position(0, 0), null);
             var middle = fixture.addEntity(new Position(1, 0), null);
             var end = fixture.addEntity(new Position(2, 0), null);
@@ -528,7 +528,7 @@ class RelationshipQueryTest {
             var tracker = types.installTracker(identity, TestStoreRuntime.inline());
             try {
                 var type = types.registerRelationship(
-                    RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+                    RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
                 var start = fixture.addEntity(new Position(0, 0), null);
                 var middle = fixture.addEntity(new Position(1, 0), null);
                 var end = fixture.addEntity(new Position(2, 0), null);
@@ -561,7 +561,7 @@ class RelationshipQueryTest {
     void enumerateReachableExposesDepthOneLinkDataAndNullBeyondIt(RelationshipQuery.Direction direction) {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = types.registerRelationship(FollowData.class, RelationshipRules.multiple());
+            var type = types.registerRelationship(FollowData.class, RelationshipTraits.defaults());
             var start = fixture.addEntity(new Position(0, 0), null);
             var near = fixture.addEntity(new Position(1, 0), null);
             var far = fixture.addEntity(new Position(2, 0), null);
@@ -581,8 +581,8 @@ class RelationshipQueryTest {
     void enumerateReachableReportsALinkedEntityOnceWhenANestedConditionMatchesSeveralTimes() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/enumerate-nested", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var owns = register(types, "relwind:test/enumerate-owned", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var type = register(types, "relwind:test/enumerate-nested", true);
+            var owns = register(types, "relwind:test/enumerate-owned", false);
             var start = fixture.addEntity(new Position(0, 0), null);
             var hub = fixture.addEntity(new Position(1, 0), null);
             var owned = fixture.addEntity(new Position(2, 0), null);
@@ -607,7 +607,7 @@ class RelationshipQueryTest {
     void enumerateReachableRejectsRecursionNestedInItsMatchCondition(DeclarationWrapper wrapper) {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/enumerate-declaration", RelationshipRules.Cardinality.SINGLE_TARGET);
+            var type = register(types, "relwind:test/enumerate-declaration", true);
             var recursive = RelationshipQuery.reachable(type, RelationshipQuery.Direction.OUTGOING, 1, Query.any());
             var nested = wrap(wrapper, type, recursive);
 
@@ -623,7 +623,7 @@ class RelationshipQueryTest {
     void enumerateReachableRejectsRecursionNestedInItsThroughCondition(DeclarationWrapper wrapper) {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/enumerate-declaration", RelationshipRules.Cardinality.SINGLE_TARGET);
+            var type = register(types, "relwind:test/enumerate-declaration", true);
             var recursive = RelationshipQuery.reachable(type, RelationshipQuery.Direction.OUTGOING, 1, Query.any());
             var nested = wrap(wrapper, type, recursive);
 
@@ -639,7 +639,7 @@ class RelationshipQueryTest {
     void enumerateReachableRejectsAMaxDepthBelowOne(int depth) {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = register(types, "relwind:test/enumerate-declaration", RelationshipRules.Cardinality.SINGLE_TARGET);
+            var type = register(types, "relwind:test/enumerate-declaration", true);
 
             var failure = assertThrows(IllegalArgumentException.class, () ->
                 RelationshipQuery.enumerateReachable(type, RelationshipQuery.Direction.OUTGOING, depth, Query.any()));
@@ -653,8 +653,8 @@ class RelationshipQueryTest {
         try (var fixture = new StoreFixture()) {
             var weaponType = fixture.registry().registerComponent(Weapon.class, Weapon::new);
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = register(types, "relwind:test/follows", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var owns = register(types, "relwind:test/owns", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var follows = register(types, "relwind:test/follows", true);
+            var owns = register(types, "relwind:test/owns", false);
             var ownsWeapon = RelationshipQuery.exists(owns, weaponType);
             var system = new RecordingSystem(
                 Archetype.of(fixture.positionType()),
@@ -685,8 +685,8 @@ class RelationshipQueryTest {
         try (var fixture = new StoreFixture()) {
             var weaponType = fixture.registry().registerComponent(Weapon.class, Weapon::new);
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = register(types, "relwind:test/follows", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var owns = register(types, "relwind:test/owns", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var follows = register(types, "relwind:test/follows", true);
+            var owns = register(types, "relwind:test/owns", false);
             var weapon = RelationshipQuery.enumerate(owns, weaponType);
             var system = new BindingSystem(
                 Archetype.of(fixture.positionType()),
@@ -725,8 +725,8 @@ class RelationshipQueryTest {
         try (var fixture = new StoreFixture()) {
             var weaponType = fixture.registry().registerComponent(Weapon.class, Weapon::new);
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = register(types, "relwind:test/follows", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var owns = register(types, "relwind:test/owns", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var follows = register(types, "relwind:test/follows", true);
+            var owns = register(types, "relwind:test/owns", false);
             var weapon = RelationshipQuery.enumerate(owns, weaponType);
             var system = new BindingSystem(
                 Archetype.of(fixture.positionType()),
@@ -759,8 +759,8 @@ class RelationshipQueryTest {
         try (var fixture = new StoreFixture()) {
             var weaponType = fixture.registry().registerComponent(Weapon.class, Weapon::new);
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = register(types, "relwind:test/follows", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var owns = register(types, "relwind:test/owns", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var follows = register(types, "relwind:test/follows", true);
+            var owns = register(types, "relwind:test/owns", false);
             var weapon = RelationshipQuery.enumerate(owns, weaponType);
             var condition = RelationshipQuery.and(
                 weapon,
@@ -797,8 +797,8 @@ class RelationshipQueryTest {
         try (var fixture = new StoreFixture()) {
             var weaponType = fixture.registry().registerComponent(Weapon.class, Weapon::new);
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = register(types, "relwind:test/follows", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var owns = register(types, "relwind:test/owns", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var follows = register(types, "relwind:test/follows", true);
+            var owns = register(types, "relwind:test/owns", false);
             var weapon = RelationshipQuery.enumerate(owns, weaponType);
             var nestedOwner = RelationshipQuery.enumerate(owns, weapon);
             var system = new BindingSystem(
@@ -828,8 +828,8 @@ class RelationshipQueryTest {
         try (var fixture = new StoreFixture()) {
             var weaponType = fixture.registry().registerComponent(Weapon.class, Weapon::new);
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = register(types, "relwind:test/follows", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var owns = register(types, "relwind:test/owns", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var follows = register(types, "relwind:test/follows", true);
+            var owns = register(types, "relwind:test/owns", false);
             var system = new RecordingSystem(
                 Archetype.of(fixture.positionType()),
                 follows,
@@ -859,8 +859,8 @@ class RelationshipQueryTest {
             var weaponType = fixture.registry().registerComponent(Weapon.class, Weapon::new);
             var shieldType = fixture.registry().registerComponent(Shield.class, Shield::new);
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = register(types, "relwind:test/follows", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var owns = register(types, "relwind:test/owns", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var follows = register(types, "relwind:test/follows", true);
+            var owns = register(types, "relwind:test/owns", false);
             var unknown = RelationshipQuery.exists(owns, weaponType);
             var condition = RelationshipQuery.and(
                 RelationshipQuery.not(RelationshipQuery.and(unknown, RelationshipQuery.and(shieldType))),
@@ -886,7 +886,7 @@ class RelationshipQueryTest {
     void nativeNonTickingSkipsSourcesButAllowsTargetsThatMatchTheirQuery() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = register(types, "relwind:test/follows", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var follows = register(types, "relwind:test/follows", false);
             var system = new RecordingSystem(
                 Query.any(),
                 follows,
@@ -913,7 +913,7 @@ class RelationshipQueryTest {
     void nativeTargetQueryCanExcludeNonTickingTargets() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = register(types, "relwind:test/follows", RelationshipRules.Cardinality.SINGLE_TARGET);
+            var follows = register(types, "relwind:test/follows", true);
             var nonTickingType = fixture.registry().getNonTickingComponentType();
             var system = new RecordingSystem(
                 Query.any(),
@@ -938,8 +938,8 @@ class RelationshipQueryTest {
         try (var fixture = new StoreFixture()) {
             var weaponType = fixture.registry().registerComponent(Weapon.class, Weapon::new);
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = register(types, "relwind:test/follows", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var owns = register(types, "relwind:test/owns", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var follows = register(types, "relwind:test/follows", true);
+            var owns = register(types, "relwind:test/owns", false);
             var system = new RecordingSystem(
                 Query.any(),
                 follows,
@@ -960,9 +960,9 @@ class RelationshipQueryTest {
             var weaponType = fixture.registry().registerComponent(Weapon.class, Weapon::new);
             var shieldType = fixture.registry().registerComponent(Shield.class, Shield::new);
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = register(types, "relwind:test/follows", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var owns = register(types, "relwind:test/owns", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
-            var equips = register(types, "relwind:test/equips", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var follows = register(types, "relwind:test/follows", true);
+            var owns = register(types, "relwind:test/owns", false);
+            var equips = register(types, "relwind:test/equips", false);
             var weapon = RelationshipQuery.enumerate(owns, weaponType);
             var shield = RelationshipQuery.enumerate(equips, shieldType);
             var system = new CombinationSystem(
@@ -1008,8 +1008,8 @@ class RelationshipQueryTest {
         try (var fixture = new StoreFixture()) {
             var destinationType = fixture.registry().registerComponent(Destination.class, Destination::new);
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = register(types, "relwind:test/follows", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var next = register(types, "relwind:test/next", RelationshipRules.Cardinality.MULTIPLE_TARGETS);
+            var follows = register(types, "relwind:test/follows", true);
+            var next = register(types, "relwind:test/next", false);
             var depthThree = RelationshipQuery.exists(
                 next,
                 RelationshipQuery.exists(next, RelationshipQuery.exists(next, destinationType))
@@ -1039,8 +1039,8 @@ class RelationshipQueryTest {
         try (var fixture = new StoreFixture()) {
             var weaponType = fixture.registry().registerComponent(Weapon.class, Weapon::new);
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = register(types, "relwind:test/follows", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var owns = types.registerRelationship(Ownership.class, RelationshipRules.multiple());
+            var follows = register(types, "relwind:test/follows", true);
+            var owns = types.registerRelationship(Ownership.class, RelationshipTraits.defaults());
             var weapon = RelationshipQuery.enumerate(owns, weaponType);
             var system = new DataBindingSystem(
                 Archetype.of(fixture.positionType()),
@@ -1069,8 +1069,8 @@ class RelationshipQueryTest {
         try {
             var weaponType = registry.registerComponent(Weapon.class, Weapon::new);
             var types = new RelationshipTypeRegistry<>(registry);
-            var follows = register(types, "relwind:test/follows", RelationshipRules.Cardinality.SINGLE_TARGET);
-            var owns = register(types, "relwind:test/owns", RelationshipRules.Cardinality.SINGLE_TARGET);
+            var follows = register(types, "relwind:test/follows", true);
+            var owns = register(types, "relwind:test/owns", true);
             var weapon = RelationshipQuery.enumerate(owns, weaponType);
             var system = new NestedBindingSystem(follows, weapon);
             registry.registerSystem(system);
@@ -1156,11 +1156,11 @@ class RelationshipQueryTest {
     private static GenericRelationshipType<Object, Object, Void> register(
         RelationshipTypeRegistry<Object> types,
         String id,
-        RelationshipRules.Cardinality cardinality
+        boolean exclusive
     ) {
         return types.registerRelationship(id,
-            cardinality == RelationshipRules.Cardinality.MULTIPLE_TARGETS
-                ? RelationshipRules.multiple() : RelationshipRules.single());
+            !exclusive
+                ? RelationshipTraits.defaults() : RelationshipTraits.defaults().exclusive());
     }
 
     private static Ref<Object> addWeapon(
@@ -1399,8 +1399,8 @@ class RelationshipQueryTest {
             var world = fixture.addWorld("overworld");
             var entityTypes = entityTypes(fixture);
             var blockTypes = blockTypes(fixture);
-            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipRules.multiple());
-            var follows = entityTypes.registerRelationship(RelationshipRules.multiple());
+            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipTraits.defaults());
+            var follows = entityTypes.registerRelationship(RelationshipTraits.defaults());
 
             var anchoredToSolid = fixture.addEntity(world);
             var anchoredToLoose = fixture.addEntity(world);
@@ -1425,8 +1425,8 @@ class RelationshipQueryTest {
             fixture.addWorld("overworld");
             var entityTypes = entityTypes(fixture);
             var blockTypes = blockTypes(fixture);
-            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipRules.single());
-            var touches = blockTypes.registerRelationship(RelationshipRules.multiple());
+            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipTraits.defaults().exclusive());
+            var touches = blockTypes.registerRelationship(RelationshipTraits.defaults());
             Query<Blocks> nested = RelationshipQuery.exists(touches, Query.any());
 
             var direct = assertThrows(IllegalArgumentException.class,

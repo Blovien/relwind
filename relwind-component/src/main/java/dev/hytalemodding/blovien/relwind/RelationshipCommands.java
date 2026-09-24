@@ -77,7 +77,7 @@ final class RelationshipCommands {
                 throw newExistingLinkException(type);
             }
             if (outgoing.size() != 0
-                && type.getDescriptor().getCardinality() == RelationshipRules.Cardinality.SINGLE_TARGET) {
+                && type.getDescriptor().isExclusive()) {
                 throw newConflictingTargetException(type, source);
             }
         }
@@ -188,7 +188,7 @@ final class RelationshipCommands {
             return;
         }
         if (outgoing != null && outgoing.size() != 0
-            && type.getDescriptor().getCardinality() == RelationshipRules.Cardinality.SINGLE_TARGET) {
+            && type.getDescriptor().isExclusive()) {
             throw newConflictingTargetException(type, source);
         }
         attachNewLink(sourceStore, targetStore, type, source, target, data, same, sourceTracker,
@@ -503,8 +503,8 @@ final class RelationshipCommands {
 
     private static boolean retains(RelationshipDescriptor<?, ?> descriptor) {
         return descriptor.isPersistent()
-            || descriptor.getTransfer() == RelationshipRules.Survival.RETAIN
-            || descriptor.getTemporaryDeactivation() == RelationshipRules.Survival.RETAIN;
+            || descriptor.getTransfer() == RelationshipTraits.Survival.RETAIN
+            || descriptor.getTemporaryDeactivation() == RelationshipTraits.Survival.RETAIN;
     }
 
     @Nonnull
