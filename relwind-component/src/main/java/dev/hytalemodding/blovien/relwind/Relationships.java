@@ -70,8 +70,7 @@ public final class Relationships implements AutoCloseable {
             type.getRelationshipTypeRegistry().getTracker(), true);
     }
 
-    /// Inserts a data-free link, or replaces the existing link's data with null.
-    /// @throws IllegalStateException if a single target source already holds another target
+    /// Stores null data and replaces the current target of an exclusive type.
     public <SOURCE, TARGET> void putTarget(
         ComponentAccessor<SOURCE> accessor,
         Ref<SOURCE> source,
@@ -83,11 +82,7 @@ public final class Relationships implements AutoCloseable {
             type.getRelationshipTypeRegistry().getTracker());
     }
 
-    /// Inserts or replaces link data and announces the change. Per-link data must be immutable:
-    /// pass a replacement value instead of editing a value returned by a read. Reacquire data
-    /// obtained before this call.
-    /// @throws IllegalStateException if the type carries no link data, or a single target source
-    /// already holds another target
+    /// Stores immutable replacement data and replaces the current target of an exclusive type.
     public <SOURCE, TARGET, LINK_DATA> void putTarget(
         ComponentAccessor<SOURCE> accessor,
         Ref<SOURCE> source,

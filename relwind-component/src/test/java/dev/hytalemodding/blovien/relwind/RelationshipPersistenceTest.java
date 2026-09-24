@@ -33,6 +33,7 @@ import com.hypixel.hytale.component.Holder;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.component.system.WorldEventSystem;
 import com.hypixel.hytale.codec.codecs.BsonDocumentCodec;
 import com.hypixel.hytale.codec.codecs.UUIDBinaryCodec;
 import com.hypixel.hytale.codec.validation.ValidationResults;
@@ -259,6 +260,105 @@ class RelationshipPersistenceTest {
             assertEquals(2, remaining.getArray("Links").size());
             assertEquals(true, remaining.getArray("Links").contains(unowned));
             assertEquals(true, relationships.hasUnresolvedTargets(source, retained));
+        }
+    }
+
+    @Test
+    void putReplacesAnExclusiveLoadedTargetAndAnnouncesBothDataValues() {
+        try (var fixture = new Fixture()) {
+            var source = fixture.add(UUID.randomUUID());
+            var oldId = UUID.randomUUID();
+            var newId = UUID.randomUUID();
+            var oldTarget = fixture.add(oldId);
+            var newTarget = fixture.add(newId);
+            var type = fixture.types.registerRelationship("relwind:test/exclusive-put", Slot.class, Slot.CODEC,
+                RelationshipTraits.defaults().exclusive().retainOnDeactivation());
+            var initial = new Slot(1);
+            var replacement = new Slot(2);
+            relationships.addTarget(fixture.store, source, type, oldTarget, initial);
+            var observer = new PutObserver();
+            fixture.registry.registerSystem(observer);
+
+            relationships.putTarget(fixture.store, source, type, newTarget, replacement);
+
+            assertSame(newTarget, relationships.getFirstTarget(source, type));
+            assertEquals(1, relationships.getTargetCount(source, type));
+            assertSame(replacement, relationships.getData(source, type, newTarget));
+            assertEquals(0, relationships.getIncomingCount(oldTarget, type));
+            assertEquals(1, relationships.getIncomingCount(newTarget, type));
+            assertEquals(1, observer.changes.size());
+            var change = observer.changes.getFirst();
+            assertSame(RelationshipChangeSystem.Kind.RETARGETED, change.kind);
+            assertSame(oldTarget, change.oldTarget.reference());
+            assertEquals(oldId, change.oldTarget.identity());
+            assertSame(newTarget, change.target.reference());
+            assertSame(initial, change.oldData);
+            assertSame(replacement, change.data);
+            var saved = fixture.store.getComponent(source, fixture.persistence.getComponentType()).getContent()
+                .getArray("Links");
+            assertEquals(1, saved.size());
+            assertEquals(newId, saved.get(0).asDocument().getBinary("Target").asUuid());
+            assertEquals(2, saved.get(0).asDocument().getDocument("Payload").getInt32("Value").getValue());
+        }
+    }
+
+    @Test
+    void putReplacesAnExclusiveAwayTargetWithoutRestoringItOnReturn() {
+        try (var fixture = new Fixture()) {
+            var source = fixture.add(UUID.randomUUID());
+            var oldId = UUID.randomUUID();
+            var newId = UUID.randomUUID();
+            var oldTarget = fixture.add(oldId);
+            var newTarget = fixture.add(newId);
+            var type = fixture.types.registerRelationship("relwind:test/exclusive-away-put", Slot.class, Slot.CODEC,
+                RelationshipTraits.defaults().exclusive().retainOnDeactivation());
+            var initial = new Slot(1);
+            var replacement = new Slot(2);
+            relationships.addTarget(fixture.store, source, type, oldTarget, initial);
+            fixture.tracker.onEntityUnloaded(oldId, oldTarget, UnloadReason.DEACTIVATION);
+            var observer = new PutObserver();
+            fixture.registry.registerSystem(observer);
+
+            relationships.putTarget(fixture.store, source, type, newTarget, replacement);
+
+            assertSame(newTarget, relationships.getFirstTarget(source, type));
+            assertEquals(1, relationships.getTargetCount(source, type));
+            assertSame(replacement, relationships.getData(source, type, newTarget));
+            assertEquals(false, relationships.hasUnresolvedTargets(source, type));
+            assertEquals(1, observer.changes.size());
+            var change = observer.changes.getFirst();
+            assertSame(RelationshipChangeSystem.Kind.RETARGETED, change.kind);
+            assertEquals(null, change.oldTarget.reference());
+            assertEquals(oldId, change.oldTarget.identity());
+            assertSame(newTarget, change.target.reference());
+            assertSame(initial, change.oldData);
+            assertSame(replacement, change.data);
+            var saved = fixture.store.getComponent(source, fixture.persistence.getComponentType()).getContent()
+                .getArray("Links");
+            assertEquals(1, saved.size());
+            assertEquals(newId, saved.get(0).asDocument().getBinary("Target").asUuid());
+            assertEquals(2, saved.get(0).asDocument().getDocument("Payload").getInt32("Value").getValue());
+            fixture.tracker.onEntityLoaded(oldId, oldTarget);
+            assertSame(newTarget, relationships.getFirstTarget(source, type));
+            assertEquals(0, relationships.getIncomingCount(oldTarget, type));
+            assertEquals(1, relationships.getIncomingCount(newTarget, type));
+            assertEquals(1, observer.changes.size());
+        }
+    }
+
+    private static final class PutObserver
+        extends WorldEventSystem<Object, RelationshipChangeSystem.ChangeEvent<Object, Slot>> {
+        private final List<RelationshipChangeSystem.ChangeEvent<Object, Slot>> changes = new ArrayList<>();
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private PutObserver() {
+            super((Class) RelationshipChangeSystem.ChangeEvent.class);
+        }
+
+        @Override
+        public void handle(Store<Object> store, CommandBuffer<Object> commands,
+            RelationshipChangeSystem.ChangeEvent<Object, Slot> change) {
+            changes.add(change);
         }
     }
 

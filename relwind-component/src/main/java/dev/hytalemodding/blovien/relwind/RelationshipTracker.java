@@ -553,7 +553,12 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         cleanupPending.values().removeIf(List::isEmpty);
     }
 
-    synchronized void validateLink(GenericRelationshipType<ECS_TYPE, ?, ?> type, Ref<ECS_TYPE> source, Ref<?> target) {
+    synchronized void validateLink(
+        GenericRelationshipType<ECS_TYPE, ?, ?> type,
+        Ref<ECS_TYPE> source,
+        Ref<?> target,
+        boolean replacesExclusiveTarget
+    ) {
         var targetTracker = type.getTargetRelationshipTypeRegistry().getTracker();
         var sourceId = keyOfRef(source);
         var targetId = targetTracker == null ? null : targetTracker.keyOfRef(target);
@@ -561,7 +566,7 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
             throw new IllegalStateException("Relationship type '" + type.getDescriptor().id()
                 + "' requires an installed tracker and stable identities on both sides");
         }
-        if (type.getDescriptor().isExclusive()) {
+        if (type.getDescriptor().isExclusive() && !replacesExclusiveTarget) {
             for (var link : getOutgoing(sourceId)) {
                 if (link.type == type && !link.resolved && !link.targetId.equals(targetId)) {
                     throw new IllegalStateException(

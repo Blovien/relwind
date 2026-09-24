@@ -242,19 +242,18 @@ class RelationshipsTest {
 
             relationships.putTarget(fixture.store(), source, follows, target, carried);
             assertForwardAndReverseLink(follows, source, target, carried);
-            assertThrows(
-                IllegalStateException.class,
-                () -> relationships.putTarget(fixture.store(), source, follows, otherTarget, initial)
-            );
-            assertForwardAndReverseLink(follows, source, target, carried);
-            assertEquals(0, relationships.getIncomingCount(otherTarget, follows));
+            relationships.putTarget(fixture.store(), source, follows, otherTarget, initial);
+            assertForwardAndReverseLink(follows, source, otherTarget, initial);
+            assertEquals(0, relationships.getIncomingCount(target, follows));
 
-            relationships.tryRemoveTarget(fixture.store(), source, follows, otherTarget);
+            relationships.tryRemoveTarget(fixture.store(), source, follows, target);
+            relationships.retarget(fixture.store(), source, follows, otherTarget, target);
+            assertForwardAndReverseLink(follows, source, target, initial);
             relationships.retarget(fixture.store(), source, follows, target, otherTarget);
-            assertForwardAndReverseLink(follows, source, otherTarget, carried);
+            assertForwardAndReverseLink(follows, source, otherTarget, initial);
             assertEquals(0, relationships.getIncomingCount(target, follows));
             relationships.retarget(fixture.store(), source, follows, otherTarget, otherTarget);
-            assertForwardAndReverseLink(follows, source, otherTarget, carried);
+            assertForwardAndReverseLink(follows, source, otherTarget, initial);
 
             relationships.removeTarget(fixture.store(), source, follows, otherTarget);
             assertNull(relationships.getFirstTarget(source, follows));
@@ -415,15 +414,8 @@ class RelationshipsTest {
                         }
                     }
                     case 1 -> {
-                        if (current == null || current.target == target) {
-                            relationships.putTarget(fixture.store(), source, follows, target, data);
-                            expected.put(source, new ExpectedLink(target, data));
-                        } else {
-                            assertThrows(
-                                IllegalStateException.class,
-                                () -> relationships.putTarget(fixture.store(), source, follows, target, data)
-                            );
-                        }
+                        relationships.putTarget(fixture.store(), source, follows, target, data);
+                        expected.put(source, new ExpectedLink(target, data));
                     }
                     case 2 -> {
                         if (current != null && current.target == target) {

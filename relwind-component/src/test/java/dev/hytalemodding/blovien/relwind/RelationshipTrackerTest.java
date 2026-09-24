@@ -507,9 +507,8 @@ class RelationshipTrackerTest {
         }
     }
 
-    @ParameterizedTest
-    @EnumSource(LinkCommand.class)
-    void aRetainedSingleTargetRejectsANewTargetBeforeChangingStorage(LinkCommand command) {
+    @Test
+    void addRejectsANewTargetWhileAnExclusiveTargetIsAway() {
         try (var fixture = new Fixture()) {
             var type = fixture.types.registerRelationship(
                 RelationshipTraits.defaults().exclusive().retainOnTransfer().retainOnDeactivation());
@@ -520,7 +519,7 @@ class RelationshipTrackerTest {
             var holder = fixture.unload(target, UnloadReason.DEACTIVATION);
 
             assertThrows(IllegalStateException.class,
-                () -> link(command, fixture.firstStore, source.ref(), type, other.ref()));
+                () -> relationships.addTarget(fixture.firstStore, source.ref(), type, other.ref()));
 
             assertNull(relationships.getFirstTarget(source.ref(), type));
             assertEquals(0, relationships.getIncomingCount(other.ref(), type));
@@ -535,21 +534,52 @@ class RelationshipTrackerTest {
         }
     }
 
-    private enum LinkCommand {
-        ADD, SET
+    @Test
+    void putWithoutDataReplacesAnExclusiveAwayTargetAndKeepsItRemovedOnReturn() {
+        try (var fixture = new Fixture()) {
+            var type = fixture.types.registerRelationship(Saddle.class,
+                RelationshipTraits.defaults().exclusive().retainOnDeactivation());
+            var source = fixture.add(fixture.firstStore);
+            var target = fixture.add(fixture.firstStore);
+            var replacement = fixture.add(fixture.firstStore);
+            relationships.addTarget(fixture.firstStore, source.ref(), type, target.ref(), new Saddle(1));
+            var holder = fixture.unload(target, UnloadReason.DEACTIVATION);
+
+            relationships.putTarget(fixture.firstStore, source.ref(), type, replacement.ref());
+
+            assertSame(replacement.ref(), relationships.getFirstTarget(source.ref(), type));
+            assertEquals(null, relationships.getData(source.ref(), type, replacement.ref()));
+            assertEquals(false, relationships.hasUnresolvedTargets(source.ref(), type));
+            var returned = fixture.load(target.id(), holder, fixture.firstStore);
+            assertEquals(1, relationships.getTargetCount(source.ref(), type));
+            assertEquals(0, relationships.getIncomingCount(returned, type));
+            assertEquals(1, relationships.getIncomingCount(replacement.ref(), type));
+        }
     }
 
-    private static void link(
-        LinkCommand command,
-        Store<Object> store,
-        Ref<Object> source,
-        RelationshipType<Object, Void> type,
-        Ref<Object> target
-    ) {
-        switch (command) {
-            case ADD -> relationships.addTarget(store, source, type, target);
-            case SET -> relationships.putTarget(store, source, type, target);
+    @Test
+    void putRejectsAReplacementWithoutIdentityAndKeepsTheAwayTarget() {
+        try (var fixture = new Fixture()) {
+            var type = fixture.types.registerRelationship(
+                RelationshipTraits.defaults().exclusive().retainOnDeactivation());
+            var source = fixture.add(fixture.firstStore);
+            var target = fixture.add(fixture.firstStore);
+            var replacement = fixture.firstStore.addEntity(Archetype.empty(), AddReason.SPAWN);
+            relationships.addTarget(fixture.firstStore, source.ref(), type, target.ref());
+            var holder = fixture.unload(target, UnloadReason.DEACTIVATION);
+
+            assertThrows(IllegalStateException.class,
+                () -> relationships.putTarget(fixture.firstStore, source.ref(), type, replacement));
+
+            assertEquals(0, relationships.getIncomingCount(replacement, type));
+            assertEquals(true, relationships.hasUnresolvedTargets(source.ref(), type));
+            var returned = fixture.load(target.id(), holder, fixture.firstStore);
+            assertSame(returned, relationships.getFirstTarget(source.ref(), type));
         }
+    }
+
+    private enum LinkCommand {
+        ADD, SET
     }
 
     private static Object applyPendingCommand(

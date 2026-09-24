@@ -150,7 +150,7 @@ final class RelationshipCommands {
         @Nullable RelationshipTracker sourceTracker
     ) {
         type.validateData(data);
-        validateNow(type, source, target, sourceStore, targetStore, sourceTracker, same);
+        validateNow(type, source, target, sourceStore, targetStore, sourceTracker, same, true);
         var sourceCommand = RelationshipAccessSystem.forStoreCommand(sourceStore);
         var targetCommand = RelationshipAccessSystem.forStoreCommand(targetStore);
         assertFree(sourceCommand, targetCommand, sourceStore, targetStore, same);
@@ -188,9 +188,40 @@ final class RelationshipCommands {
             finish(sourceCommand, targetCommand, same, storage, record, announcement);
             return;
         }
-        if (outgoing != null && outgoing.size() != 0
-            && type.getDescriptor().isExclusive()) {
-            throw newConflictingTargetException(type, source);
+        if (outgoing != null && outgoing.size() != 0 && type.getDescriptor().isExclusive()) {
+            Ref<TARGET> oldTarget = outgoing.getTarget(0);
+            LINK_DATA oldData = RelationshipStorage.getLinkDataOf(type, oldTarget, outgoing);
+            moveTarget(sourceStore, targetStore, type, source, oldTarget, target, outgoing, oldData, data,
+                same, sourceTracker, sourceCommand, targetCommand);
+            return;
+        }
+        if (type.getDescriptor().isExclusive() && sourceTracker != null
+            && sourceTracker.hasUnresolvedOutgoing(type, source)) {
+            var previousTargets = new ArrayList<RelationshipTracker.DroppedTarget<LINK_DATA>>();
+            Runnable storage = () ->
+                RelationshipStorage.attachLink(sourceStore, targetStore, type, source, target, data);
+            Runnable record = () -> {
+                previousTargets.addAll(sourceTracker.dropUnresolvedTargets(type, source));
+                var persistence = type.getRelationshipTypeRegistry().getPersistence();
+                for (var previous : previousTargets) {
+                    syncPersistence(type, source, previous.identity(), false, null, sourceTracker, persistence);
+                }
+                recordLinked(targetStore, type, source, target, data, same, sourceTracker);
+            };
+            Runnable announcement = () -> {
+                if (same && sourceStore.getRegistry()
+                    .getWorldEventTypeForClass(RelationshipChangeSystem.ChangeEvent.class) != null) {
+                    var previous = previousTargets.getFirst();
+                    RelationshipChangeSystem.dispatch(sourceStore, new RelationshipChangeSystem.ChangeEvent<>(
+                        (GenericRelationshipType<SOURCE, SOURCE, LINK_DATA>) type,
+                        RelationshipChangeSystem.Kind.RETARGETED,
+                        new RelationshipChangeSystem.LinkedEntity<>(source, sourceTracker.getIdentity(source)),
+                        new RelationshipChangeSystem.LinkedEntity<>((Ref<SOURCE>) target, sourceTracker.getIdentity(target)),
+                        new RelationshipChangeSystem.LinkedEntity<>(null, previous.identity()), previous.data(), data));
+                }
+            };
+            finish(sourceCommand, targetCommand, same, storage, record, announcement);
+            return;
         }
         attachNewLink(sourceStore, targetStore, type, source, target, data, same, sourceTracker,
             true, sourceCommand, targetCommand);
@@ -455,10 +486,31 @@ final class RelationshipCommands {
                 + type.getDescriptor().id() + "'");
         }
         LINK_DATA data = RelationshipStorage.getLinkDataOf(type, oldTarget, outgoing);
+        moveTarget(sourceStore, targetStore, type, source, oldTarget, newTarget, outgoing, null, data,
+            same, sourceTracker, sourceCommand, targetCommand);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static <SOURCE, TARGET, LINK_DATA> void moveTarget(
+        Store<SOURCE> sourceStore,
+        Store<TARGET> targetStore,
+        GenericRelationshipType<SOURCE, TARGET, LINK_DATA> type,
+        Ref<SOURCE> source,
+        Ref<TARGET> oldTarget,
+        Ref<TARGET> newTarget,
+        OutgoingLink<SOURCE, TARGET> outgoing,
+        @Nullable LINK_DATA oldData,
+        @Nullable LINK_DATA data,
+        boolean same,
+        @Nullable RelationshipTracker sourceTracker,
+        RelationshipProcessingTracker sourceCommand,
+        RelationshipProcessingTracker targetCommand
+    ) {
         Runnable storage = () -> {
             RelationshipStorage.addIncoming(targetStore, type, source, newTarget);
             RelationshipStorage.removeIncoming(targetStore, type, source, oldTarget);
             outgoing.retarget(oldTarget, newTarget);
+            outgoing.setData(newTarget, data);
             sourceStore.replaceComponent(source, type.getSourceType(), outgoing);
         };
         Runnable record = () -> {
@@ -474,7 +526,7 @@ final class RelationshipCommands {
         Runnable announcement = () -> {
             if (same) {
                 onChanged(sourceStore, type, sourceTracker,
-                    RelationshipChangeSystem.Kind.RETARGETED, source, newTarget, oldTarget, null, data);
+                    RelationshipChangeSystem.Kind.RETARGETED, source, newTarget, oldTarget, oldData, data);
             }
         };
         finish(sourceCommand, targetCommand, same, storage, record, announcement);
@@ -584,7 +636,6 @@ final class RelationshipCommands {
         }
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     private static <SOURCE, TARGET> void validateNow(
         GenericRelationshipType<SOURCE, TARGET, ?> type,
         Ref<SOURCE> source,
@@ -594,13 +645,27 @@ final class RelationshipCommands {
         @Nullable RelationshipTracker sourceTracker,
         boolean same
     ) {
+        validateNow(type, source, target, sourceStore, targetStore, sourceTracker, same, false);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static <SOURCE, TARGET> void validateNow(
+        GenericRelationshipType<SOURCE, TARGET, ?> type,
+        Ref<SOURCE> source,
+        Ref<TARGET> target,
+        Store<SOURCE> sourceStore,
+        Store<TARGET> targetStore,
+        @Nullable RelationshipTracker sourceTracker,
+        boolean same,
+        boolean replacesExclusiveTarget
+    ) {
         validateSubmission(type, source, target, sourceStore, targetStore);
         source.validate(sourceStore);
         target.validate(targetStore);
         sourceStore.assertThread();
         targetStore.assertThread();
         if (sourceTracker != null) {
-            sourceTracker.validateLink(type, source, target);
+            sourceTracker.validateLink(type, source, target, replacesExclusiveTarget);
         } else if (!same && retains(type.getDescriptor())) {
             throw new IllegalStateException("Relationship type '" + type.getDescriptor().id()
                 + "' requires an installed tracker and stable identities on both sides");
