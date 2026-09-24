@@ -170,6 +170,101 @@ class RelationshipPersistenceTest {
     }
 
     @Test
+    void linkReadsExcludeAnAwayTarget() {
+        try (var fixture = new Fixture()) {
+            var source = fixture.add(UUID.randomUUID());
+            var targetId = UUID.randomUUID();
+            var target = fixture.add(targetId);
+            var type = fixture.persistent("relwind:test/away-read");
+            relationships.addTarget(fixture.store, source, type, target);
+            fixture.tracker.onEntityUnloaded(targetId, target, UnloadReason.DEACTIVATION);
+            var outgoing = new ArrayList<Ref<?>>();
+            var incoming = new ArrayList<Ref<?>>();
+
+            var present = relationships.hasTarget(source, type, target);
+            relationships.forEachLink(source, (visitedType, visitedTarget, data) -> outgoing.add(visitedTarget));
+            relationships.forEachIncomingLink(target, (visitedType, visitedSource, data) -> incoming.add(visitedSource));
+
+            assertEquals(false, present);
+            assertEquals(List.of(), outgoing);
+            assertEquals(List.of(), incoming);
+            assertEquals(true, relationships.hasUnresolvedTargets(source, type));
+        }
+    }
+
+    @Test
+    void clearTargetsRemovesLoadedAndAwayLinksBeforeAnnouncingTheirRemoval() {
+        try (var fixture = new Fixture()) {
+            var sourceId = UUID.randomUUID();
+            var firstId = UUID.randomUUID();
+            var secondId = UUID.randomUUID();
+            var awayId = UUID.randomUUID();
+            var source = fixture.add(sourceId);
+            var first = fixture.add(firstId);
+            var second = fixture.add(secondId);
+            var away = fixture.add(awayId);
+            var type = fixture.types.registerRelationship("relwind:test/clear", Slot.class, Slot.CODEC,
+                RelationshipTraits.defaults().retainOnDeactivation());
+            relationships.addTarget(fixture.store, source, type, first, new Slot(1));
+            relationships.addTarget(fixture.store, source, type, second, new Slot(2));
+            relationships.addTarget(fixture.store, source, type, away, new Slot(3));
+            fixture.tracker.onEntityUnloaded(awayId, away, UnloadReason.DEACTIVATION);
+            var removals = new ArrayList<ClearedLink>();
+            fixture.registry.registerSystem(new RelationshipChangeSystem<Object, Slot>(type) {
+                @Override
+                protected void onRelationshipRemoved(LinkedEntity<Object> from, LinkedEntity<Object> to,
+                    Slot data, Store<Object> store, CommandBuffer<Object> commands) {
+                    assertSame(source, from.reference());
+                    assertEquals(sourceId, from.identity());
+                    assertEquals(0, relationships.getTargetCount(source, type));
+                    assertEquals(0, relationships.getIncomingCount(first, type));
+                    assertEquals(0, relationships.getIncomingCount(second, type));
+                    assertEquals(false, relationships.hasUnresolvedTargets(source, type));
+                    assertEquals(null, store.getComponent(source, fixture.persistence.getComponentType()));
+                    removals.add(new ClearedLink(to.reference(), to.identity(), data.value));
+                }
+            });
+
+            relationships.clearTargets(fixture.store, source, type);
+            fixture.tracker.onEntityLoaded(awayId, away);
+
+            assertEquals(3, removals.size());
+            assertEquals(Set.of(new ClearedLink(first, firstId, 1), new ClearedLink(second, secondId, 2),
+                new ClearedLink(null, awayId, 3)), Set.copyOf(removals));
+            assertEquals(0, relationships.getTargetCount(source, type));
+        }
+    }
+
+    @Test
+    void clearTargetsPreservesOtherTypesAndUnownedSavedRecords() {
+        try (var fixture = new Fixture()) {
+            var source = fixture.add(UUID.randomUUID());
+            var target = fixture.add(UUID.randomUUID());
+            var otherId = UUID.randomUUID();
+            var otherTarget = fixture.add(otherId);
+            var cleared = fixture.persistent("relwind:test/cleared");
+            var retained = fixture.persistent("relwind:test/retained");
+            relationships.addTarget(fixture.store, source, cleared, target);
+            relationships.addTarget(fixture.store, source, retained, otherTarget);
+            fixture.tracker.onEntityUnloaded(otherId, otherTarget, UnloadReason.DEACTIVATION);
+            var metadata = fixture.store.getComponent(source, fixture.persistence.getComponentType());
+            var unowned = savedRecord(cleared.getDescriptor().id(), UUID.randomUUID(), "FutureDisposition");
+            var saved = metadata.getContent();
+            saved.getArray("Links").add(unowned);
+            fixture.store.replaceComponent(source, fixture.persistence.getComponentType(), decoded(saved));
+
+            relationships.clearTargets(fixture.store, source, cleared);
+
+            var remaining = fixture.store.getComponent(source, fixture.persistence.getComponentType()).getContent();
+            assertEquals(2, remaining.getArray("Links").size());
+            assertEquals(true, remaining.getArray("Links").contains(unowned));
+            assertEquals(true, relationships.hasUnresolvedTargets(source, retained));
+        }
+    }
+
+    private record ClearedLink(Ref<Object> target, Object identity, int data) { }
+
+    @Test
     void aRecordNamingAnotherInstallationNeverUsesTheLocalIdentityCodec() {
         var decodedTargets = new ArrayList<BsonValue>();
         var codec = new UUIDBinaryCodec() {

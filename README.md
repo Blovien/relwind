@@ -16,6 +16,8 @@ Various examples, present in `relwind-examples`, can give ideas of various usage
 Other features are the following:
 
 - **Relationship queries:** combine component and relationship conditions, select link data, and traverse reachable entities with an explicit depth limit.
+- **Link reads:** `hasTarget` checks one loaded link. `forEachLink` and `forEachIncomingLink` visit loaded links across relationship types, including bridge types, with their type and data.
+- **Clear targets:** `clearTargets` removes a source's loaded and away links of one type. A command buffer queues the clear until it drains.
 - **Lifecycle traits:** choose whether links survive transfers and temporary deactivation, and whether deleting a target also deletes its linked sources.
 - **Persistence:** named relationship types save their links; unnamed types remain in memory. Retained links can remain unresolved while a linked entity is unavailable.
 - **ECS integration:** native command buffers and relationship-aware ticking, change, event, and lifecycle systems.

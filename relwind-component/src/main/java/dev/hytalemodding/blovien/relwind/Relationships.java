@@ -138,6 +138,17 @@ public final class Relationships implements AutoCloseable {
             type.getRelationshipTypeRegistry().getTracker(), true);
     }
 
+    /// Removes the source's loaded and away links of this type.
+    public <SOURCE, TARGET> void clearTargets(
+        ComponentAccessor<SOURCE> accessor,
+        Ref<SOURCE> source,
+        GenericRelationshipType<SOURCE, TARGET, ?> type
+    ) {
+        ensureOpen();
+        RelationshipCommands.clearTargets(accessor, this, type, source,
+            type.getRelationshipTypeRegistry().getTracker());
+    }
+
     private static void requireLinkData(GenericRelationshipType<?, ?, ?> type, String command) {
         if (type.getDescriptor().linkDataClass() == Void.class) {
             throw new IllegalStateException(
@@ -256,6 +267,107 @@ public final class Relationships implements AutoCloseable {
         type.getIncomingType().validate();
         target.validate(targetStore);
         targetStore.assertThread();
+    }
+
+    public <SOURCE, TARGET> boolean hasTarget(
+        Ref<SOURCE> source,
+        GenericRelationshipType<SOURCE, TARGET, ?> type,
+        Ref<TARGET> target
+    ) {
+        ensureOpen();
+        validateSourceRead(type, source);
+        validateTargetRead(type, target);
+        var outgoing = RelationshipStorage.getOutgoing(type,
+            component -> source.getStore().getComponent(source, component));
+        return outgoing != null && outgoing.contains(target);
+    }
+
+    /// Visits loaded outgoing links across every registered relationship type.
+    public <SOURCE> void forEachLink(Ref<SOURCE> source, LinkConsumer<SOURCE> consumer) {
+        ensureOpen();
+        var store = validateEntityRead(source);
+        Objects.requireNonNull(consumer, "consumer");
+        var types = RelationshipAccessSystem.getOutgoingTypes(store.getRegistry());
+        if (types.isEmpty()) return;
+        duringTraversal(store, () -> {
+            for (var type : types) visitOutgoing(source, type, consumer);
+        });
+    }
+
+    /// Visits loaded incoming links, including types registered in another registry.
+    public <TARGET> void forEachIncomingLink(Ref<TARGET> target, IncomingLinkConsumer<TARGET> consumer) {
+        ensureOpen();
+        var store = validateEntityRead(target);
+        Objects.requireNonNull(consumer, "consumer");
+        var types = RelationshipAccessSystem.getIncomingTypes(store.getRegistry());
+        if (types.isEmpty()) return;
+        duringTraversal(store, () -> {
+            for (var type : types) visitIncoming(target, type, consumer);
+        });
+    }
+
+    private static <SOURCE, TARGET> void visitOutgoing(
+        Ref<SOURCE> source,
+        GenericRelationshipType<SOURCE, TARGET, ?> type,
+        LinkConsumer<SOURCE> consumer
+    ) {
+        var outgoing = RelationshipStorage.getOutgoing(type,
+            component -> source.getStore().getComponent(source, component));
+        if (outgoing == null) return;
+        for (int index = 0; index < outgoing.size(); index++) {
+            var target = outgoing.getTarget(index);
+            var data = outgoing.getData(index, Object.class);
+            var targetStore = validateEntityRead(target);
+            duringTraversal(targetStore, () -> consumer.accept(type, target, data));
+        }
+    }
+
+    private static <SOURCE, TARGET> void visitIncoming(
+        Ref<TARGET> target,
+        GenericRelationshipType<SOURCE, TARGET, ?> type,
+        IncomingLinkConsumer<TARGET> consumer
+    ) {
+        var incoming = RelationshipStorage.getIncoming(type,
+            component -> target.getStore().getComponent(target, component));
+        if (incoming == null) return;
+        for (int index = 0; index < incoming.size(); index++) {
+            var source = incoming.getSource(index);
+            var sourceStore = validateEntityRead(source);
+            var outgoing = RelationshipStorage.getOutgoing(type,
+                component -> sourceStore.getComponent(source, component));
+            var data = outgoing == null ? null : outgoing.getData(target, Object.class);
+            duringTraversal(sourceStore, () -> consumer.accept(type, source, data));
+        }
+    }
+
+    private static <ECS_TYPE> Store<ECS_TYPE> validateEntityRead(Ref<ECS_TYPE> entity) {
+        var store = Objects.requireNonNull(entity, "entity").getStore();
+        if (store.isShutdown() || store.getRegistry().isShutdown()) {
+            throw new IllegalStateException("Cannot access relationships for a stopped Store");
+        }
+        entity.validate(store);
+        store.assertThread();
+        return store;
+    }
+
+    private static void duringTraversal(Store<?> store, Runnable consumer) {
+        var command = RelationshipAccessSystem.forStoreCommand(store);
+        command.beginTraversal();
+        try {
+            consumer.run();
+        } finally {
+            command.endTraversal();
+        }
+    }
+
+    @FunctionalInterface
+    public interface LinkConsumer<SOURCE> {
+        void accept(GenericRelationshipType<SOURCE, ?, ?> type, Ref<?> target, @Nullable Object data);
+    }
+
+    @FunctionalInterface
+    public interface IncomingLinkConsumer<TARGET> {
+        void accept(GenericRelationshipType<?, TARGET, ?> type, Ref<?> source, @Nullable Object data);
     }
 
     @Nullable

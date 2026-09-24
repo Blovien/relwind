@@ -8,6 +8,8 @@ package dev.hytalemodding.blovien.relwind;
 
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.ComponentAccessor;
+import com.hypixel.hytale.component.Component;
+import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import org.checkerframework.checker.nullness.compatqual.NonNullDecl;
@@ -15,11 +17,30 @@ import org.checkerframework.checker.nullness.compatqual.NonNullDecl;
 import javax.annotation.Nullable;
 
 import java.util.Objects;
+import java.util.function.Function;
 
 /// The outgoing and incoming component storage shared by command execution, lifecycle behavior and
 /// the public reads, together with the Store and accessor plumbing those operations need.
 final class RelationshipStorage {
     private RelationshipStorage() {
+    }
+
+    @Nullable
+    @SuppressWarnings("unchecked")
+    static <SOURCE, TARGET> OutgoingLink<SOURCE, TARGET> getOutgoing(
+        GenericRelationshipType<SOURCE, TARGET, ?> type,
+        Function<ComponentType<SOURCE, ?>, Component<SOURCE>> components
+    ) {
+        return (OutgoingLink<SOURCE, TARGET>) components.apply(type.getSourceType());
+    }
+
+    @Nullable
+    @SuppressWarnings("unchecked")
+    static <SOURCE, TARGET> IncomingLinks<SOURCE, TARGET> getIncoming(
+        GenericRelationshipType<SOURCE, TARGET, ?> type,
+        Function<ComponentType<TARGET, ?>, Component<TARGET>> components
+    ) {
+        return (IncomingLinks<SOURCE, TARGET>) components.apply(type.getIncomingType());
     }
 
     /// Reads the source Store off the accessor for either command path.

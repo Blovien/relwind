@@ -692,6 +692,23 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         }
     }
 
+    synchronized <LINK_DATA> List<DroppedTarget<LINK_DATA>> dropUnresolvedTargets(
+        GenericRelationshipType<ECS_TYPE, ?, LINK_DATA> type,
+        Ref<ECS_TYPE> source
+    ) {
+        var dropped = new ArrayList<DroppedTarget<LINK_DATA>>();
+        for (var link : new ArrayList<>(getOutgoing(keyOfRef(source)))) {
+            if (link.type == type && !link.resolved) {
+                dropped.add(new DroppedTarget<>(identityOf(link.targetId),
+                    type.getDescriptor().linkDataClass().cast(link.data)));
+                unfile(link);
+            }
+        }
+        return dropped;
+    }
+
+    record DroppedTarget<LINK_DATA>(Object identity, @Nullable LINK_DATA data) { }
+
     /// Copies the link data out before the component detaches. Resolution puts it back.
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void capture(Link link, Ref<ECS_TYPE> unloading, @Nullable Holder<ECS_TYPE> holder) {

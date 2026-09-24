@@ -15,6 +15,7 @@ import com.hypixel.hytale.component.Store;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import java.util.ArrayList;
 import java.util.Objects;
 
 /// Executes relationship commands. It validates the call, orders the storage update, the tracker and
@@ -264,6 +265,120 @@ final class RelationshipCommands {
         };
         finish(sourceCommand, targetCommand, same, storage, record, announcement);
     }
+
+    static <SOURCE, TARGET, LINK_DATA> void clearTargets(
+        ComponentAccessor<SOURCE> accessor,
+        @Nullable Relationships relationships,
+        GenericRelationshipType<SOURCE, TARGET, LINK_DATA> type,
+        Ref<SOURCE> source,
+        @Nullable RelationshipTracker<?, ?> sourceTracker
+    ) {
+        Objects.requireNonNull(type, "type");
+        Objects.requireNonNull(source, "source");
+        Store<SOURCE> accessorStore = RelationshipStorage.storeOfAccessor(accessor);
+        Store<SOURCE> sourceStore = RelationshipStorage.getSourceStore(source, accessor, accessorStore);
+        validateClearSubmission(type, source, sourceStore);
+        if (accessor != accessorStore) {
+            CommandBuffer<?> queue = (CommandBuffer<?>) accessor;
+            queue.run(ignored -> {
+                if (relationships != null) relationships.ensureOpen();
+                validateClearSubmission(type, source, sourceStore);
+                if (source.isValid()) {
+                    clearTargetsNow(sourceStore, type, source, sourceTracker);
+                }
+            });
+            return;
+        }
+        clearTargetsNow(sourceStore, type, source, sourceTracker);
+    }
+
+    private static <SOURCE> void validateClearSubmission(
+        GenericRelationshipType<SOURCE, ?, ?> type,
+        Ref<SOURCE> source,
+        Store<SOURCE> sourceStore
+    ) {
+        if (sourceStore.isShutdown() || sourceStore.getRegistry().isShutdown()
+            || type.getExpectedTargetRegistry().isShutdown()) {
+            throw new IllegalStateException("Cannot access relationships for a stopped Store");
+        }
+        type.validate(sourceStore);
+        if (source.getStore() != sourceStore) {
+            throw new IllegalArgumentException("Linked entity belongs to a different store");
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static <SOURCE, TARGET, LINK_DATA> void clearTargetsNow(
+        Store<SOURCE> sourceStore,
+        GenericRelationshipType<SOURCE, TARGET, LINK_DATA> type,
+        Ref<SOURCE> source,
+        @Nullable RelationshipTracker<?, ?> sourceTracker
+    ) {
+        source.validate(sourceStore);
+        sourceStore.assertThread();
+        var outgoing = sourceStore.getComponent(source, type.getSourceType());
+        Store<TARGET> targetStore = outgoing == null || outgoing.size() == 0
+            ? (Store<TARGET>) sourceStore : outgoing.getTarget(0).getStore();
+        boolean same = sourceStore == targetStore;
+        boolean announce = type.getExpectedTargetRegistry() == sourceStore.getRegistry();
+        var sourceCommand = RelationshipAccessSystem.forStoreCommand(sourceStore);
+        var targetCommand = RelationshipAccessSystem.forStoreCommand(targetStore);
+        assertFree(sourceCommand, targetCommand, sourceStore, targetStore, same);
+        var tracker = (RelationshipTracker<SOURCE, ?>) sourceTracker;
+        Object sourceId = tracker == null ? null : tracker.getIdentity(source);
+        var targets = new ArrayList<ClearedTarget<TARGET, LINK_DATA>>();
+        var announcements = new ArrayList<RelationshipChangeSystem.ChangeEvent<SOURCE, LINK_DATA>>();
+        if (outgoing != null) {
+            for (int index = 0; index < outgoing.size(); index++) {
+                var target = outgoing.getTarget(index);
+                validateNow(type, source, target, sourceStore, targetStore, sourceTracker, same);
+                var data = RelationshipStorage.getLinkDataOf(type, target, outgoing);
+                Object targetId = targetIdentity(targetTracker(sourceTracker, targetStore, same),
+                    targetStore, target, same);
+                targets.add(new ClearedTarget<>(target, targetId, data));
+                if (announce) {
+                    announcements.add(RelationshipChangeSystem.newRemoval((GenericRelationshipType) type,
+                        source, sourceId, (Ref) target, targetId, data));
+                }
+            }
+        }
+        Runnable storage = () -> {
+            for (var target : targets) {
+                RelationshipStorage.removeIncoming(targetStore, type, source, target.reference());
+                RelationshipStorage.removeOutgoingTarget(sourceStore, type, source, target.reference(), outgoing);
+            }
+        };
+        Runnable record = () -> {
+            var persistence = type.getRelationshipTypeRegistry().getPersistence();
+            for (var target : targets) {
+                unlinkTracker(sourceTracker, type, source, target.reference());
+                syncPersistence(type, source, target.identity(), false, null, sourceTracker, persistence);
+            }
+            if (tracker != null) {
+                for (var target : tracker.dropUnresolvedTargets(type, source)) {
+                    syncPersistence(type, source, target.identity(), false, null, sourceTracker, persistence);
+                    if (announce) {
+                        announcements.add(RelationshipChangeSystem.newRemoval((GenericRelationshipType) type,
+                            source, sourceId, null, target.identity(), target.data()));
+                    }
+                }
+            }
+        };
+        Runnable announcement = () -> {
+            if (sourceStore.getRegistry().getWorldEventTypeForClass(RelationshipChangeSystem.ChangeEvent.class) != null) {
+                for (var change : announcements) {
+                    RelationshipChangeSystem.dispatch(sourceStore, change);
+                }
+            }
+        };
+        finish(sourceCommand, targetCommand, same, storage, record, announcement);
+    }
+
+    private record ClearedTarget<TARGET, LINK_DATA>(
+        Ref<TARGET> reference,
+        @Nullable Object identity,
+        @Nullable LINK_DATA data
+    ) { }
 
     static <SOURCE, TARGET, LINK_DATA> void retarget(
         ComponentAccessor<SOURCE> accessor,

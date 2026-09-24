@@ -16,6 +16,7 @@ import com.hypixel.hytale.component.system.System;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -43,6 +44,36 @@ final class RelationshipAccessSystem<ECS_TYPE> extends System<ECS_TYPE> {
 
     void hold(RelationshipTypeRegistry<ECS_TYPE> types) {
         holders.add(types);
+    }
+
+    static <ECS_TYPE> List<GenericRelationshipType<ECS_TYPE, ?, ?>> getOutgoingTypes(
+        ComponentRegistry<ECS_TYPE> registry
+    ) {
+        var installed = getInstalled(registry);
+        var result = new ArrayList<GenericRelationshipType<ECS_TYPE, ?, ?>>();
+        if (installed != null) {
+            for (var holder : installed.holders) result.addAll(holder.getRegisteredTypes());
+        }
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    static <ECS_TYPE> List<GenericRelationshipType<?, ECS_TYPE, ?>> getIncomingTypes(
+        ComponentRegistry<ECS_TYPE> registry
+    ) {
+        var installed = getInstalled(registry);
+        var result = new ArrayList<GenericRelationshipType<?, ECS_TYPE, ?>>();
+        if (installed != null) {
+            for (var holder : installed.holders) {
+                for (var type : holder.getRegisteredTypes()) {
+                    if (type.getExpectedTargetRegistry() == registry) {
+                        result.add((GenericRelationshipType<?, ECS_TYPE, ?>) type);
+                    }
+                }
+                result.addAll(holder.getIncomingFromOtherRegistries());
+            }
+        }
+        return result;
     }
 
     /// Installs the access resource on that Store if it is not there yet.
