@@ -672,8 +672,7 @@ class RelationshipTrackerTest {
 
             assertTrue(rejected.getMessage().contains("CommandBuffer"), rejected.getMessage());
             assertEquals(1, relationships.getTargetCount(source.ref(), type));
-            // the add threw before the tracker recorded the link
-            assertFalse(fixture.tracker.contains(type, source.id(), target.id()));
+            assertFalse(fixture.tracker.hasRecordedLinks());
         }
     }
 

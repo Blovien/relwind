@@ -144,7 +144,7 @@ final class RelationshipDeletionSystem<ECS_TYPE> extends RefSystem<ECS_TYPE> imp
                 if (type.getTargetRelationshipTypeRegistry() != types) {
                     // the targets live in another Store, which captures their side itself
                     if (outgoing != null) {
-                        captured.add(new CapturedLinks<>(type, outgoing, null, null));
+                        captured.add(new CapturedLinks<>(type, outgoing, null, getIdentity(types.getTracker(), deleted)));
                     }
                     continue;
                 }
@@ -153,7 +153,7 @@ final class RelationshipDeletionSystem<ECS_TYPE> extends RefSystem<ECS_TYPE> imp
                 var incoming = store.getComponent(deleted, same.getIncomingType());
                 if (outgoing != null || incoming != null) {
                     captured.add(new CapturedLinks<>(same, outgoing, incoming,
-                        getSavedIdentity(types, same, deleted)));
+                        getIdentity(types.getTracker(), deleted)));
                 }
             }
             for (var type : types.getIncomingFromOtherRegistries()) {
@@ -216,7 +216,8 @@ final class RelationshipDeletionSystem<ECS_TYPE> extends RefSystem<ECS_TYPE> imp
         if (outgoing == null) {
             return;
         }
-        releaseTargetsAcrossStores((GenericRelationshipType) type, (Ref) deleted, (OutgoingLink) outgoing);
+        releaseTargetsAcrossStores((GenericRelationshipType) type, (Ref) deleted, (OutgoingLink) outgoing,
+            links.deletedIdentity());
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -238,10 +239,13 @@ final class RelationshipDeletionSystem<ECS_TYPE> extends RefSystem<ECS_TYPE> imp
     private static <SOURCE, TARGET> void releaseTargetsAcrossStores(
         GenericRelationshipType<SOURCE, TARGET, ?> type,
         Ref<SOURCE> deleted,
-        OutgoingLink<SOURCE, TARGET> outgoing
+        OutgoingLink<SOURCE, TARGET> outgoing,
+        @Nullable Object sourceIdentity
     ) {
+        var tracker = type.getRelationshipTypeRegistry().getTracker();
         for (int index = 0; index < outgoing.size(); index++) {
             var target = outgoing.getTarget(index);
+            if (tracker != null) tracker.onLinkDeleted(type, deleted, target, sourceIdentity);
             if (target.isValid()) {
                 RelationshipLifecycle.releaseDeletedSource(type, deleted, target);
             }
@@ -262,10 +266,12 @@ final class RelationshipDeletionSystem<ECS_TYPE> extends RefSystem<ECS_TYPE> imp
         incoming.clear();
         boolean cascade = type.getDescriptor().getOnDeleteTarget()
             == RelationshipTraits.OnDeleteTarget.DELETE;
+        var tracker = type.getRelationshipTypeRegistry().getTracker();
         for (var source : sources) {
-            if (!source.isValid() || !RelationshipLifecycle.releaseDeletedTarget(type, source, deleted)) {
-                continue;
-            }
+            if (!source.isValid()) continue;
+            var sourceIdentity = getIdentity(tracker, source);
+            if (tracker != null) tracker.onLinkDeleted(type, source, deleted, sourceIdentity);
+            if (!RelationshipLifecycle.releaseDeletedTarget(type, source, deleted)) continue;
             if (cascade) {
                 deletion.cascadeSourceAcrossStores(source);
             }
@@ -284,23 +290,6 @@ final class RelationshipDeletionSystem<ECS_TYPE> extends RefSystem<ECS_TYPE> imp
             return;
         }
         for (var removal : deletion.removals) RelationshipChangeSystem.dispatch(store, removal);
-    }
-
-    /// Reads the identity while the Ref still resolves. The cleanup runs after the entity is gone.
-    @Nullable
-    private static <ECS_TYPE> Object getSavedIdentity(
-        RelationshipTypeRegistry<ECS_TYPE> types,
-        GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type,
-        Ref<ECS_TYPE> deleted
-    ) {
-        var persistence = types.getPersistence();
-        if (
-            persistence == null || types.getTracker() == null
-                || !type.getDescriptor().isPersistent()
-        ) {
-            return null;
-        }
-        return persistence.getIdentity(deleted);
     }
 
     /// The deleted source's record goes with the entity. This only repairs each target's list.
@@ -329,11 +318,11 @@ final class RelationshipDeletionSystem<ECS_TYPE> extends RefSystem<ECS_TYPE> imp
             if (!target.isValid()) {
                 continue;
             }
-            removals.add(RelationshipChangeSystem.newRemoval(type, deleted, getIdentity(tracker, deleted),
+            removals.add(RelationshipChangeSystem.newRemoval(type, deleted, links.deletedIdentity(),
                 target, getIdentity(tracker, target), outgoing.getData(index, Object.class)));
             var incoming = store.getComponent(target, type.getIncomingType());
             if (incoming != null) incoming.remove(deleted);
-            if (tracker != null) tracker.onUnlinked(type, deleted, target);
+            if (tracker != null) tracker.onLinkDeleted(type, deleted, target, links.deletedIdentity());
         }
         outgoing.clear();
     }
@@ -371,15 +360,15 @@ final class RelationshipDeletionSystem<ECS_TYPE> extends RefSystem<ECS_TYPE> imp
             }
             // this source survives and keeps its records
             if (tracker != null && persistence != null) {
-                persistence.validateMutation(type, source, links.targetIdentity());
+                persistence.validateMutation(type, source, links.deletedIdentity());
             }
             deletion.removals.add(RelationshipChangeSystem.newRemoval(type, source, getIdentity(tracker, source),
-                deleted, getIdentity(tracker, deleted), outgoing.getData(deleted, Object.class)));
+                deleted, links.deletedIdentity(), outgoing.getData(deleted, Object.class)));
+            if (tracker != null) tracker.onLinkDeleted(type, source, deleted, getIdentity(tracker, source));
             RelationshipLifecycle.detachLinkedEntity(store, type, source, deleted, deleted);
             if (tracker != null) {
-                tracker.onUnlinked(type, source, deleted);
                 if (persistence != null) {
-                    persistence.synchronize(type, source, links.targetIdentity(), false, null);
+                    persistence.synchronize(type, source, links.deletedIdentity(), false, null);
                 }
             }
             if (
@@ -410,7 +399,7 @@ final class RelationshipDeletionSystem<ECS_TYPE> extends RefSystem<ECS_TYPE> imp
         GenericRelationshipType<?, ?, ?> type,
         @Nullable OutgoingLink<ECS_TYPE, ?> outgoing,
         @Nullable IncomingLinks<?, ECS_TYPE> incoming,
-        @Nullable Object targetIdentity
+        @Nullable Object deletedIdentity
     ) {
     }
 

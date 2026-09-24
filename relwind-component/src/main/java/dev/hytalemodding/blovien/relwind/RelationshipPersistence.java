@@ -299,6 +299,18 @@ public final class RelationshipPersistence<ECS_TYPE> {
         requireIdentity(target);
     }
 
+    void validateMutationWithIdentities(GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type,
+        @Nullable Object source, @Nullable Object target) {
+        if (!type.getDescriptor().isPersistent()) {
+            return;
+        }
+        if (type.getDescriptor().linkDataClass() != Void.class && type.getCodec() == null) {
+            throw new IllegalStateException("Persistent relationship payloads require a registered codec");
+        }
+        requireIdentity(source);
+        requireIdentity(target);
+    }
+
     <LINK_DATA> void synchronize(
         GenericRelationshipType<ECS_TYPE, ?, LINK_DATA> type,
         Ref<ECS_TYPE> source,

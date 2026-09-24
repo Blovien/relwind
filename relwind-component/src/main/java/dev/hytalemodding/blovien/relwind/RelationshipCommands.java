@@ -67,12 +67,16 @@ final class RelationshipCommands {
         boolean maintainTwins
     ) {
         type.validateData(data);
-        validateNow(type, source, target, sourceStore, targetStore, sourceTracker, same);
+        validateNow(type, source, target, sourceStore, targetStore);
+        Object sourceId = sourceTracker == null ? null : sourceTracker.getIdentity(source);
+        Object targetId = source == target ? sourceId
+            : targetIdentity(targetTracker(sourceTracker, targetStore, same), targetStore, target, same);
+        validateIdentities(type, source, target, sourceTracker, same, sourceId, targetId, false);
         var sourceCommand = RelationshipAccessSystem.forStoreCommand(sourceStore);
         var targetCommand = RelationshipAccessSystem.forStoreCommand(targetStore);
         assertFree(sourceCommand, targetCommand, sourceStore, targetStore, same);
         if (sourceTracker != null
-            && sourceTracker.hasUnresolvedLink(type, source, target)) {
+            && sourceTracker.hasUnresolvedLink(type, source, target, sourceId, targetId)) {
             throw newExistingLinkException(type);
         }
         var outgoing = sourceStore.getComponent(source, type.getSourceType());
@@ -86,10 +90,11 @@ final class RelationshipCommands {
             }
         }
         if (maintainTwins) {
-            symmetricCommand(sourceStore, type, sourceTracker).putPair(source, (Ref<SOURCE>) target, data);
+            symmetricCommand(sourceStore, type, sourceTracker)
+                .putPair(source, sourceId, (Ref<SOURCE>) target, targetId, data);
             return;
         }
-        attachNewLink(sourceStore, targetStore, type, source, target, data, same, sourceTracker,
+        attachNewLink(sourceStore, targetStore, type, source, sourceId, target, targetId, data, same, sourceTracker,
             notifyChanges, sourceCommand, targetCommand);
     }
 
@@ -98,7 +103,9 @@ final class RelationshipCommands {
         Store<TARGET> targetStore,
         GenericRelationshipType<SOURCE, TARGET, LINK_DATA> type,
         Ref<SOURCE> source,
+        @Nullable Object sourceId,
         Ref<TARGET> target,
+        @Nullable Object targetId,
         @Nullable LINK_DATA data,
         boolean same,
         @Nullable RelationshipTracker<?, ?> sourceTracker,
@@ -109,11 +116,11 @@ final class RelationshipCommands {
         Runnable storage = () ->
             RelationshipStorage.attachLink(sourceStore, targetStore, type, source, target, data);
         Runnable record = () ->
-            recordLinked(targetStore, type, source, target, data, same, sourceTracker);
+            recordLinked(type, source, targetId, data, sourceTracker);
         Runnable announcement = () -> {
             if (same && notifyChanges) {
-                onChanged(sourceStore, type, sourceTracker,
-                    RelationshipChangeSystem.Kind.ADDED, source, target, null, null, data);
+                onChanged(sourceStore, type,
+                    RelationshipChangeSystem.Kind.ADDED, source, sourceId, target, targetId, null, null, null, data);
             }
         };
         finish(sourceCommand, targetCommand, same, storage, record, announcement);
@@ -157,27 +164,31 @@ final class RelationshipCommands {
         @Nullable RelationshipTracker sourceTracker
     ) {
         type.validateData(data);
-        validateNow(type, source, target, sourceStore, targetStore, sourceTracker, same, true);
+        validateNow(type, source, target, sourceStore, targetStore);
+        Object sourceId = sourceTracker == null ? null : sourceTracker.getIdentity(source);
+        Object targetId = source == target ? sourceId
+            : targetIdentity(targetTracker(sourceTracker, targetStore, same), targetStore, target, same);
+        validateIdentities(type, source, target, sourceTracker, same, sourceId, targetId, true);
         var sourceCommand = RelationshipAccessSystem.forStoreCommand(sourceStore);
         var targetCommand = RelationshipAccessSystem.forStoreCommand(targetStore);
         assertFree(sourceCommand, targetCommand, sourceStore, targetStore, same);
         if (type.getDescriptor().isSymmetric()) {
-            symmetricCommand(sourceStore, type, sourceTracker).putPair(source, (Ref<SOURCE>) target, data);
+            symmetricCommand(sourceStore, type, sourceTracker)
+                .putPair(source, sourceId, (Ref<SOURCE>) target, targetId, data);
             return;
         }
         if (same && sourceTracker != null
-            && sourceTracker.hasUnresolvedLink(type, source, target)) {
-            Object oldData = sourceTracker.getUnresolvedLinkData(type, source, target);
+            && sourceTracker.hasUnresolvedLink(type, source, target, sourceId, targetId)) {
+            Object oldData = sourceTracker.getUnresolvedLinkData(type, source, target, sourceId, targetId);
             Runnable storage = () ->
-                sourceTracker.updateUnresolvedLink(type, source, target, data);
+                sourceTracker.updateUnresolvedLink(type, source, target, sourceId, targetId, data);
             Runnable record = () -> {
                 var persistence = (RelationshipPersistence) type.getRelationshipTypeRegistry().getPersistence();
-                Object targetId = sourceTracker.getIdentity(target);
                 syncPersistence(type, source, targetId, true, data, sourceTracker, persistence);
             };
             Runnable announcement = () ->
-                onChanged(sourceStore, type, sourceTracker,
-                    RelationshipChangeSystem.Kind.SET, source, target, null, (LINK_DATA) oldData, data);
+                onChanged(sourceStore, type,
+                    RelationshipChangeSystem.Kind.SET, source, sourceId, target, targetId, null, null, (LINK_DATA) oldData, data);
             finish(sourceCommand, targetCommand, true, storage, record, announcement);
             return;
         }
@@ -189,11 +200,11 @@ final class RelationshipCommands {
                 sourceStore.replaceComponent(source, type.getSourceType(), outgoing);
             };
             Runnable record = () ->
-                recordLinked(targetStore, type, source, target, data, same, sourceTracker);
+                recordLinked(type, source, targetId, data, sourceTracker);
             Runnable announcement = () -> {
                 if (same) {
-                    onChanged(sourceStore, type, sourceTracker,
-                        RelationshipChangeSystem.Kind.SET, source, target, null, oldData, data);
+                    onChanged(sourceStore, type,
+                        RelationshipChangeSystem.Kind.SET, source, sourceId, target, targetId, null, null, oldData, data);
                 }
             };
             finish(sourceCommand, targetCommand, same, storage, record, announcement);
@@ -202,22 +213,24 @@ final class RelationshipCommands {
         if (outgoing != null && outgoing.size() != 0 && type.getDescriptor().isExclusive()) {
             Ref<TARGET> oldTarget = outgoing.getTarget(0);
             LINK_DATA oldData = RelationshipStorage.getLinkDataOf(type, oldTarget, outgoing);
-            moveTarget(sourceStore, targetStore, type, source, oldTarget, target, outgoing, oldData, data,
-                same, sourceTracker, sourceCommand, targetCommand);
+            Object oldTargetId = oldTarget == source ? sourceId
+                : targetIdentity(targetTracker(sourceTracker, targetStore, same), targetStore, oldTarget, same);
+            moveTarget(sourceStore, targetStore, type, source, sourceId, oldTarget, oldTargetId, target, targetId,
+                outgoing, oldData, data, same, sourceTracker, sourceCommand, targetCommand);
             return;
         }
         if (type.getDescriptor().isExclusive() && sourceTracker != null
-            && sourceTracker.hasUnresolvedOutgoing(type, source)) {
+            && sourceTracker.hasUnresolvedOutgoing(type, source, sourceId)) {
             var previousTargets = new ArrayList<RelationshipTracker.DroppedTarget<LINK_DATA>>();
             Runnable storage = () ->
                 RelationshipStorage.attachLink(sourceStore, targetStore, type, source, target, data);
             Runnable record = () -> {
-                previousTargets.addAll(sourceTracker.dropUnresolvedTargets(type, source));
+                previousTargets.addAll(sourceTracker.dropUnresolvedTargets(type, source, sourceId));
                 var persistence = type.getRelationshipTypeRegistry().getPersistence();
                 for (var previous : previousTargets) {
                     syncPersistence(type, source, previous.identity(), false, null, sourceTracker, persistence);
                 }
-                recordLinked(targetStore, type, source, target, data, same, sourceTracker);
+                recordLinked(type, source, targetId, data, sourceTracker);
             };
             Runnable announcement = () -> {
                 if (same && sourceStore.getRegistry()
@@ -226,15 +239,15 @@ final class RelationshipCommands {
                     RelationshipChangeSystem.dispatch(sourceStore, new RelationshipChangeSystem.ChangeEvent<>(
                         (GenericRelationshipType<SOURCE, SOURCE, LINK_DATA>) type,
                         RelationshipChangeSystem.Kind.RETARGETED,
-                        new RelationshipChangeSystem.LinkedEntity<>(source, sourceTracker.getIdentity(source)),
-                        new RelationshipChangeSystem.LinkedEntity<>((Ref<SOURCE>) target, sourceTracker.getIdentity(target)),
+                        new RelationshipChangeSystem.LinkedEntity<>(source, sourceId),
+                        new RelationshipChangeSystem.LinkedEntity<>((Ref<SOURCE>) target, targetId),
                         new RelationshipChangeSystem.LinkedEntity<>(null, previous.identity()), previous.data(), data));
                 }
             };
             finish(sourceCommand, targetCommand, same, storage, record, announcement);
             return;
         }
-        attachNewLink(sourceStore, targetStore, type, source, target, data, same, sourceTracker,
+        attachNewLink(sourceStore, targetStore, type, source, sourceId, target, targetId, data, same, sourceTracker,
             true, sourceCommand, targetCommand);
     }
 
@@ -279,12 +292,17 @@ final class RelationshipCommands {
         boolean notifyChanges,
         boolean maintainTwins
     ) {
-        validateNow(type, source, target, sourceStore, targetStore, sourceTracker, same);
+        validateNow(type, source, target, sourceStore, targetStore);
+        Object sourceId = sourceTracker == null ? null : sourceTracker.getIdentity(source);
+        Object targetId = source == target ? sourceId
+            : targetIdentity(targetTracker(sourceTracker, targetStore, same), targetStore, target, same);
+        validateIdentities(type, source, target, sourceTracker, same, sourceId, targetId, false);
         var sourceCommand = RelationshipAccessSystem.forStoreCommand(sourceStore);
         var targetCommand = RelationshipAccessSystem.forStoreCommand(targetStore);
         assertFree(sourceCommand, targetCommand, sourceStore, targetStore, same);
         if (maintainTwins) {
-            symmetricCommand(sourceStore, type, sourceTracker).removePair(source, (Ref<SOURCE>) target, strict);
+            symmetricCommand(sourceStore, type, sourceTracker)
+                .removePair(source, sourceId, (Ref<SOURCE>) target, targetId, strict);
             return;
         }
         var outgoing = sourceStore.getComponent(source, type.getSourceType());
@@ -300,16 +318,13 @@ final class RelationshipCommands {
             RelationshipStorage.removeOutgoingTarget(sourceStore, type, source, target, outgoing);
         };
         Runnable record = () -> {
-            unlinkTracker(sourceTracker, type, source, target);
             var persistence = (RelationshipPersistence) type.getRelationshipTypeRegistry().getPersistence();
-            var targetTracker = targetTracker(sourceTracker, targetStore, same);
-            Object targetId = targetIdentity(targetTracker, targetStore, target, same);
             syncPersistence(type, source, targetId, false, null, sourceTracker, persistence);
         };
         Runnable announcement = () -> {
             if (same && notifyChanges) {
-                onChanged(sourceStore, type, sourceTracker,
-                    RelationshipChangeSystem.Kind.REMOVED, source, target, null, null, data);
+                onChanged(sourceStore, type,
+                    RelationshipChangeSystem.Kind.REMOVED, source, sourceId, target, targetId, null, null, null, data);
             }
         };
         finish(sourceCommand, targetCommand, same, storage, record, announcement);
@@ -373,21 +388,22 @@ final class RelationshipCommands {
         var sourceCommand = RelationshipAccessSystem.forStoreCommand(sourceStore);
         var targetCommand = RelationshipAccessSystem.forStoreCommand(targetStore);
         assertFree(sourceCommand, targetCommand, sourceStore, targetStore, same);
-        if (type.getDescriptor().isSymmetric()) {
-            symmetricCommand(sourceStore, type, sourceTracker).clear(source);
-            return;
-        }
         var tracker = (RelationshipTracker<SOURCE, ?>) sourceTracker;
         Object sourceId = tracker == null ? null : tracker.getIdentity(source);
+        if (type.getDescriptor().isSymmetric()) {
+            symmetricCommand(sourceStore, type, sourceTracker).clear(source, sourceId);
+            return;
+        }
         var targets = new ArrayList<ClearedTarget<TARGET, LINK_DATA>>();
         var announcements = new ArrayList<RelationshipChangeSystem.ChangeEvent<SOURCE, LINK_DATA>>();
         if (outgoing != null) {
             for (int index = 0; index < outgoing.size(); index++) {
                 var target = outgoing.getTarget(index);
-                validateNow(type, source, target, sourceStore, targetStore, sourceTracker, same);
+                validateNow(type, source, target, sourceStore, targetStore);
                 var data = RelationshipStorage.getLinkDataOf(type, target, outgoing);
-                Object targetId = targetIdentity(targetTracker(sourceTracker, targetStore, same),
-                    targetStore, target, same);
+                Object targetId = source == target ? sourceId
+                    : targetIdentity(targetTracker(sourceTracker, targetStore, same), targetStore, target, same);
+                validateIdentities(type, source, target, sourceTracker, same, sourceId, targetId, false);
                 targets.add(new ClearedTarget<>(target, targetId, data));
                 if (announce) {
                     announcements.add(RelationshipChangeSystem.newRemoval((GenericRelationshipType) type,
@@ -404,11 +420,10 @@ final class RelationshipCommands {
         Runnable record = () -> {
             var persistence = type.getRelationshipTypeRegistry().getPersistence();
             for (var target : targets) {
-                unlinkTracker(sourceTracker, type, source, target.reference());
                 syncPersistence(type, source, target.identity(), false, null, sourceTracker, persistence);
             }
             if (tracker != null) {
-                for (var target : tracker.dropUnresolvedTargets(type, source)) {
+                for (var target : tracker.dropUnresolvedTargets(type, source, sourceId)) {
                     syncPersistence(type, source, target.identity(), false, null, sourceTracker, persistence);
                     if (announce) {
                         announcements.add(RelationshipChangeSystem.newRemoval((GenericRelationshipType) type,
@@ -486,8 +501,16 @@ final class RelationshipCommands {
         if (newTarget.getStore() != oldTarget.getStore()) {
             throw new IllegalArgumentException("Relationship target belongs to a different store");
         }
-        validateNow(type, source, oldTarget, sourceStore, targetStore, sourceTracker, same);
-        validateNow(type, source, newTarget, sourceStore, targetStore, sourceTracker, same);
+        validateNow(type, source, oldTarget, sourceStore, targetStore);
+        validateNow(type, source, newTarget, sourceStore, targetStore);
+        Object sourceId = sourceTracker == null ? null : sourceTracker.getIdentity(source);
+        var targetTracker = targetTracker(sourceTracker, targetStore, same);
+        Object oldTargetId = source == oldTarget ? sourceId
+            : targetIdentity(targetTracker, targetStore, oldTarget, same);
+        Object newTargetId = source == newTarget ? sourceId : oldTarget == newTarget ? oldTargetId
+            : targetIdentity(targetTracker, targetStore, newTarget, same);
+        validateIdentities(type, source, oldTarget, sourceTracker, same, sourceId, oldTargetId, false);
+        validateIdentities(type, source, newTarget, sourceTracker, same, sourceId, newTargetId, false);
         var sourceCommand = RelationshipAccessSystem.forStoreCommand(sourceStore);
         var targetCommand = RelationshipAccessSystem.forStoreCommand(targetStore);
         assertFree(sourceCommand, targetCommand, sourceStore, targetStore, same);
@@ -503,18 +526,19 @@ final class RelationshipCommands {
                 + type.getDescriptor().id() + "'");
         }
         if (same && sourceTracker != null
-            && sourceTracker.hasUnresolvedLink(type, source, newTarget)) {
+            && sourceTracker.hasUnresolvedLink(type, source, newTarget, sourceId, newTargetId)) {
             throw new IllegalStateException("Destination is already linked for relationship type '"
                 + type.getDescriptor().id() + "'");
         }
         LINK_DATA data = RelationshipStorage.getLinkDataOf(type, oldTarget, outgoing);
         if (type.getDescriptor().isSymmetric()) {
-            symmetricCommand(sourceStore, type, sourceTracker).retargetPair(source, (Ref<SOURCE>) oldTarget,
-                (Ref<SOURCE>) newTarget, (OutgoingLink<SOURCE, SOURCE>) outgoing, data);
+            symmetricCommand(sourceStore, type, sourceTracker).retargetPair(source, sourceId,
+                (Ref<SOURCE>) oldTarget, oldTargetId, (Ref<SOURCE>) newTarget, newTargetId,
+                (OutgoingLink<SOURCE, SOURCE>) outgoing, data);
             return;
         }
-        moveTarget(sourceStore, targetStore, type, source, oldTarget, newTarget, outgoing, null, data,
-            same, sourceTracker, sourceCommand, targetCommand);
+        moveTarget(sourceStore, targetStore, type, source, sourceId, oldTarget, oldTargetId, newTarget,
+            newTargetId, outgoing, null, data, same, sourceTracker, sourceCommand, targetCommand);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -523,8 +547,11 @@ final class RelationshipCommands {
         Store<TARGET> targetStore,
         GenericRelationshipType<SOURCE, TARGET, LINK_DATA> type,
         Ref<SOURCE> source,
+        @Nullable Object sourceId,
         Ref<TARGET> oldTarget,
+        @Nullable Object oldTargetId,
         Ref<TARGET> newTarget,
+        @Nullable Object newTargetId,
         OutgoingLink<SOURCE, TARGET> outgoing,
         @Nullable LINK_DATA oldData,
         @Nullable LINK_DATA data,
@@ -541,19 +568,15 @@ final class RelationshipCommands {
             sourceStore.replaceComponent(source, type.getSourceType(), outgoing);
         };
         Runnable record = () -> {
-            unlinkTracker(sourceTracker, type, source, oldTarget);
-            attachLinkTracker(sourceTracker, type, source, newTarget);
             var persistence = (RelationshipPersistence) type.getRelationshipTypeRegistry().getPersistence();
-            var targetTracker = targetTracker(sourceTracker, targetStore, same);
-            Object oldId = targetIdentity(targetTracker, targetStore, oldTarget, same);
-            Object newId = targetIdentity(targetTracker, targetStore, newTarget, same);
-            syncPersistence(type, source, oldId, false, null, sourceTracker, persistence);
-            syncPersistence(type, source, newId, true, data, sourceTracker, persistence);
+            syncPersistence(type, source, oldTargetId, false, null, sourceTracker, persistence);
+            syncPersistence(type, source, newTargetId, true, data, sourceTracker, persistence);
         };
         Runnable announcement = () -> {
             if (same) {
-                onChanged(sourceStore, type, sourceTracker,
-                    RelationshipChangeSystem.Kind.RETARGETED, source, newTarget, oldTarget, oldData, data);
+                onChanged(sourceStore, type,
+                    RelationshipChangeSystem.Kind.RETARGETED, source, sourceId, newTarget, newTargetId,
+                    oldTarget, oldTargetId, oldData, data);
             }
         };
         finish(sourceCommand, targetCommand, same, storage, record, announcement);
@@ -585,24 +608,28 @@ final class RelationshipCommands {
             this.tracker = tracker;
         }
 
-        private void putPair(Ref<ECS_TYPE> source, Ref<ECS_TYPE> target, @Nullable LINK_DATA data) {
-            put(source, target, data);
-            if (source != target) put(target, source, data);
+        private void putPair(Ref<ECS_TYPE> source, @Nullable Object sourceId,
+            Ref<ECS_TYPE> target, @Nullable Object targetId, @Nullable LINK_DATA data) {
+            put(source, sourceId, target, targetId, data);
+            if (source != target) put(target, targetId, source, sourceId, data);
             finish();
         }
 
-        private void removePair(Ref<ECS_TYPE> source, Ref<ECS_TYPE> target, boolean strict) {
+        private void removePair(Ref<ECS_TYPE> source, @Nullable Object sourceId,
+            Ref<ECS_TYPE> target, @Nullable Object targetId, boolean strict) {
             var outgoing = store.getComponent(source, type.getSourceType());
             if (strict && (outgoing == null || !outgoing.contains(target))) {
                 throw newMissingLinkException(type);
             }
-            remove(source, target);
-            if (source != target) remove(target, source);
+            remove(source, sourceId, target, targetId);
+            if (source != target) remove(target, targetId, source, sourceId);
             finish();
         }
 
-        private void retargetPair(Ref<ECS_TYPE> source, Ref<ECS_TYPE> oldTarget,
-            Ref<ECS_TYPE> newTarget, OutgoingLink<ECS_TYPE, ECS_TYPE> outgoing, @Nullable LINK_DATA data) {
+        private void retargetPair(Ref<ECS_TYPE> source, @Nullable Object sourceId,
+            Ref<ECS_TYPE> oldTarget, @Nullable Object oldTargetId,
+            Ref<ECS_TYPE> newTarget, @Nullable Object newTargetId,
+            OutgoingLink<ECS_TYPE, ECS_TYPE> outgoing, @Nullable LINK_DATA data) {
             storage.add(() -> {
                 RelationshipStorage.addIncoming(store, type, source, newTarget);
                 RelationshipStorage.removeIncoming(store, type, source, oldTarget);
@@ -610,36 +637,36 @@ final class RelationshipCommands {
                 store.replaceComponent(source, type.getSourceType(), outgoing);
             });
             records.add(() -> {
-                unlinkTracker(tracker, type, source, oldTarget);
-                synchronize(source, oldTarget, false, null);
-                recordLinked(store, type, source, newTarget, data, true, tracker);
+                synchronize(source, oldTargetId, false, null);
+                synchronize(source, newTargetId, true, data);
             });
-            addChange(RelationshipChangeSystem.Kind.RETARGETED, source, newTarget, oldTarget, null, data);
-            if (source != oldTarget) remove(oldTarget, source);
-            if (source != newTarget) put(newTarget, source, data);
+            addChange(RelationshipChangeSystem.Kind.RETARGETED, source, sourceId, newTarget, newTargetId,
+                oldTarget, oldTargetId, null, data);
+            if (source != oldTarget) remove(oldTarget, oldTargetId, source, sourceId);
+            if (source != newTarget) put(newTarget, newTargetId, source, sourceId, data);
             finish();
         }
 
-        private void clear(Ref<ECS_TYPE> source) {
+        private void clear(Ref<ECS_TYPE> source, @Nullable Object sourceId) {
             var outgoing = store.getComponent(source, type.getSourceType());
             if (outgoing != null) {
                 for (int index = 0; index < outgoing.size(); index++) {
                     var target = outgoing.getTarget(index);
-                    validateNow(type, source, target, store, store, tracker, true);
-                    remove(source, target);
-                    if (source != target) remove(target, source);
+                    validateNow(type, source, target, store, store);
+                    Object targetId = source == target ? sourceId : tracker == null ? null : tracker.getIdentity(target);
+                    validateIdentities(type, source, target, tracker, true, sourceId, targetId, false);
+                    remove(source, sourceId, target, targetId);
+                    if (source != target) remove(target, targetId, source, sourceId);
                 }
             }
             if (tracker != null) {
                 records.add(() -> {
-                    Object sourceId = tracker.getIdentity(source);
-                    for (var target : tracker.dropUnresolvedTargets(type, source)) {
-                        syncPersistence(type, source, target.identity(), false, null, tracker,
-                            type.getRelationshipTypeRegistry().getPersistence());
+                    for (var target : tracker.dropUnresolvedTargets(type, source, sourceId)) {
+                        synchronize(source, target.identity(), false, null);
                         var removed = RelationshipChangeSystem.newRemoval(type, source, sourceId,
                             null, target.identity(), target.data());
                         announcements.add(removed);
-                        var twin = tracker.dropUnresolvedTwin(type, source, target.identity());
+                        var twin = tracker.dropUnresolvedTwin(type, source, sourceId, target.identity());
                         if (twin != null) {
                             var removedTwin = RelationshipChangeSystem.newRemoval(type, null, twin.identity(),
                                 source, sourceId, twin.data());
@@ -651,15 +678,16 @@ final class RelationshipCommands {
             finish();
         }
 
-        private void put(Ref<ECS_TYPE> source, Ref<ECS_TYPE> target, @Nullable LINK_DATA data) {
+        private void put(Ref<ECS_TYPE> source, @Nullable Object sourceId,
+            Ref<ECS_TYPE> target, @Nullable Object targetId, @Nullable LINK_DATA data) {
             var outgoing = store.getComponent(source, type.getSourceType());
             boolean loaded = outgoing != null && outgoing.contains(target);
-            boolean unresolved = tracker != null && tracker.hasUnresolvedLink(type, source, target);
-            LINK_DATA oldData = unresolved ? tracker.getUnresolvedLinkData(type, source, target)
+            boolean unresolved = tracker != null && tracker.hasUnresolvedLink(type, source, target, sourceId, targetId);
+            LINK_DATA oldData = unresolved ? tracker.getUnresolvedLinkData(type, source, target, sourceId, targetId)
                 : RelationshipStorage.getLinkDataOf(type, target, outgoing);
             storage.add(() -> {
                 if (unresolved) {
-                    tracker.updateUnresolvedLink(type, source, target, data);
+                    tracker.updateUnresolvedLink(type, source, target, sourceId, targetId, data);
                 } else if (loaded) {
                     outgoing.setData(target, data);
                     store.replaceComponent(source, type.getSourceType(), outgoing);
@@ -667,20 +695,18 @@ final class RelationshipCommands {
                     RelationshipStorage.attachLink(store, store, type, source, target, data);
                 }
             });
-            records.add(() -> {
-                if (unresolved) synchronize(source, target, true, data);
-                else recordLinked(store, type, source, target, data, true, tracker);
-            });
+            records.add(() -> synchronize(source, targetId, true, data));
             var kind = loaded || unresolved ? RelationshipChangeSystem.Kind.SET : RelationshipChangeSystem.Kind.ADDED;
-            addChange(kind, source, target, null, oldData, data);
+            addChange(kind, source, sourceId, target, targetId, null, null, oldData, data);
         }
 
-        private void remove(Ref<ECS_TYPE> source, Ref<ECS_TYPE> target) {
+        private void remove(Ref<ECS_TYPE> source, @Nullable Object sourceId,
+            Ref<ECS_TYPE> target, @Nullable Object targetId) {
             var outgoing = store.getComponent(source, type.getSourceType());
             boolean loaded = outgoing != null && outgoing.contains(target);
-            boolean unresolved = tracker != null && tracker.hasUnresolvedLink(type, source, target);
+            boolean unresolved = tracker != null && tracker.hasUnresolvedLink(type, source, target, sourceId, targetId);
             if (!loaded && !unresolved) return;
-            LINK_DATA data = unresolved ? tracker.getUnresolvedLinkData(type, source, target)
+            LINK_DATA data = unresolved ? tracker.getUnresolvedLinkData(type, source, target, sourceId, targetId)
                 : RelationshipStorage.getLinkDataOf(type, target, outgoing);
             if (loaded) {
                 storage.add(() -> {
@@ -689,27 +715,27 @@ final class RelationshipCommands {
                 });
             }
             records.add(() -> {
-                unlinkTracker(tracker, type, source, target);
-                synchronize(source, target, false, null);
+                if (unresolved) tracker.dropUnresolvedLink(type, source, target, sourceId, targetId);
+                synchronize(source, targetId, false, null);
             });
-            addChange(RelationshipChangeSystem.Kind.REMOVED, source, target, null, null, data);
+            addChange(RelationshipChangeSystem.Kind.REMOVED, source, sourceId, target, targetId, null, null, null, data);
         }
 
-        private void addChange(RelationshipChangeSystem.Kind kind, Ref<ECS_TYPE> source, Ref<ECS_TYPE> target,
-            @Nullable Ref<ECS_TYPE> oldTarget, @Nullable LINK_DATA oldData, @Nullable LINK_DATA data) {
+        private void addChange(RelationshipChangeSystem.Kind kind,
+            Ref<ECS_TYPE> source, @Nullable Object sourceId, Ref<ECS_TYPE> target, @Nullable Object targetId,
+            @Nullable Ref<ECS_TYPE> oldTarget, @Nullable Object oldTargetId,
+            @Nullable LINK_DATA oldData, @Nullable LINK_DATA data) {
             if (store.getRegistry().getWorldEventTypeForClass(RelationshipChangeSystem.ChangeEvent.class) == null) return;
-            announcements.add(new RelationshipChangeSystem.ChangeEvent<>(type, kind, linkedEntity(source),
-                linkedEntity(target), oldTarget == null ? null : linkedEntity(oldTarget), oldData, data));
+            announcements.add(new RelationshipChangeSystem.ChangeEvent<>(type, kind,
+                new RelationshipChangeSystem.LinkedEntity<>(source, sourceId),
+                new RelationshipChangeSystem.LinkedEntity<>(target, targetId),
+                oldTarget == null ? null : new RelationshipChangeSystem.LinkedEntity<>(oldTarget, oldTargetId), oldData, data));
         }
 
-        private RelationshipChangeSystem.LinkedEntity<ECS_TYPE> linkedEntity(Ref<ECS_TYPE> ref) {
-            return new RelationshipChangeSystem.LinkedEntity<>(ref, tracker == null ? null : tracker.getIdentity(ref));
-        }
-
-        private void synchronize(Ref<ECS_TYPE> source, Ref<ECS_TYPE> target,
+        private void synchronize(Ref<ECS_TYPE> source, @Nullable Object targetId,
             boolean present, @Nullable LINK_DATA data) {
-            syncPersistence(type, source, tracker == null ? null : tracker.getIdentity(target), present, data,
-                tracker, type.getRelationshipTypeRegistry().getPersistence());
+            syncPersistence(type, source, targetId, present, data, tracker,
+                type.getRelationshipTypeRegistry().getPersistence());
         }
 
         private void dispatch(RelationshipChangeSystem.ChangeEvent<ECS_TYPE, LINK_DATA> change) {
@@ -836,31 +862,28 @@ final class RelationshipCommands {
         Ref<SOURCE> source,
         Ref<TARGET> target,
         Store<SOURCE> sourceStore,
-        Store<TARGET> targetStore,
-        @Nullable RelationshipTracker sourceTracker,
-        boolean same
-    ) {
-        validateNow(type, source, target, sourceStore, targetStore, sourceTracker, same, false);
-    }
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private static <SOURCE, TARGET> void validateNow(
-        GenericRelationshipType<SOURCE, TARGET, ?> type,
-        Ref<SOURCE> source,
-        Ref<TARGET> target,
-        Store<SOURCE> sourceStore,
-        Store<TARGET> targetStore,
-        @Nullable RelationshipTracker sourceTracker,
-        boolean same,
-        boolean replacesExclusiveTarget
+        Store<TARGET> targetStore
     ) {
         validateSubmission(type, source, target, sourceStore, targetStore);
         source.validate(sourceStore);
         target.validate(targetStore);
         sourceStore.assertThread();
         targetStore.assertThread();
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static <SOURCE, TARGET> void validateIdentities(
+        GenericRelationshipType<SOURCE, TARGET, ?> type,
+        Ref<SOURCE> source,
+        Ref<TARGET> target,
+        @Nullable RelationshipTracker sourceTracker,
+        boolean same,
+        @Nullable Object sourceId,
+        @Nullable Object targetId,
+        boolean replacesExclusiveTarget
+    ) {
         if (sourceTracker != null) {
-            sourceTracker.validateLink(type, source, target, replacesExclusiveTarget);
+            sourceTracker.validateLink(type, source, target, sourceId, targetId, replacesExclusiveTarget);
         } else if (!same && retains(type.getDescriptor())) {
             throw new IllegalStateException("Relationship type '" + type.getDescriptor().id()
                 + "' requires an installed tracker and stable identities on both sides");
@@ -868,11 +891,11 @@ final class RelationshipCommands {
         if (same && sourceTracker != null) {
             var persistence = (RelationshipPersistence) type.getRelationshipTypeRegistry().getPersistence();
             if (persistence != null) {
-                persistence.validateMutation(type, source, target);
+                persistence.validateMutationWithIdentities(type, sourceId, targetId);
             }
         }
         if (!same) {
-            assertSameWorld(sourceStore, targetStore);
+            assertSameWorld(source.getStore(), target.getStore());
         }
     }
 
@@ -903,46 +926,15 @@ final class RelationshipCommands {
         );
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private static void attachLinkTracker(
-        @Nullable RelationshipTracker sourceTracker,
-        GenericRelationshipType type,
-        Ref source,
-        Ref target
-    ) {
-        if (sourceTracker == null) {
-            return;
-        }
-        sourceTracker.onLinked(type, source, target);
-    }
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private static void unlinkTracker(
-        @Nullable RelationshipTracker sourceTracker,
-        GenericRelationshipType type,
-        Ref source,
-        Ref target
-    ) {
-        if (sourceTracker == null) {
-            return;
-        }
-        sourceTracker.onUnlinked(type, source, target);
-    }
-
     private static <SOURCE, TARGET, LINK_DATA> void recordLinked(
-        Store<TARGET> targetStore,
         GenericRelationshipType<SOURCE, TARGET, LINK_DATA> type,
         Ref<SOURCE> source,
-        Ref<TARGET> target,
+        @Nullable Object targetId,
         @Nullable LINK_DATA data,
-        boolean same,
         @Nullable RelationshipTracker<?, ?> sourceTracker
     ) {
-        attachLinkTracker(sourceTracker, type, source, target);
-        var persistence = type.getRelationshipTypeRegistry().getPersistence();
-        var targetTracker = targetTracker(sourceTracker, targetStore, same);
-        Object targetId = targetIdentity(targetTracker, targetStore, target, same);
-        syncPersistence(type, source, targetId, true, data, sourceTracker, persistence);
+        syncPersistence(type, source, targetId, true, data, sourceTracker,
+            type.getRelationshipTypeRegistry().getPersistence());
     }
 
     @Nullable
@@ -992,31 +984,29 @@ final class RelationshipCommands {
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    static <SOURCE, TARGET, LINK_DATA> void onChanged(
+    private static <SOURCE, TARGET, LINK_DATA> void onChanged(
         Store<SOURCE> sourceStore,
         GenericRelationshipType<SOURCE, TARGET, LINK_DATA> type,
-        @Nullable RelationshipTracker sourceTracker,
         RelationshipChangeSystem.Kind kind,
         Ref<SOURCE> source,
+        @Nullable Object sourceId,
         Ref<TARGET> target,
+        @Nullable Object targetId,
         @Nullable Ref<TARGET> oldTarget,
+        @Nullable Object oldTargetId,
         @Nullable LINK_DATA oldData,
         @Nullable LINK_DATA data
     ) {
         if (sourceStore.getRegistry().getWorldEventTypeForClass(RelationshipChangeSystem.ChangeEvent.class) == null) {
             return;
         }
-        RelationshipTracker<SOURCE, Object> tracker =
-            (RelationshipTracker<SOURCE, Object>) sourceTracker;
         Ref<SOURCE> targetAsSource = (Ref<SOURCE>) target;
         Ref<SOURCE> oldAsSource = oldTarget == null ? null : (Ref<SOURCE>) oldTarget;
-        var sourceLinkedEntity = new RelationshipChangeSystem.LinkedEntity<>(source.isValid() ? source : null,
-            tracker == null ? null : tracker.getIdentity(source));
+        var sourceLinkedEntity = new RelationshipChangeSystem.LinkedEntity<>(source.isValid() ? source : null, sourceId);
         var targetLinkedEntity = new RelationshipChangeSystem.LinkedEntity<>(targetAsSource.isValid() ? targetAsSource : null,
-            tracker == null ? null : tracker.getIdentity(targetAsSource));
+            targetId);
         RelationshipChangeSystem.LinkedEntity<SOURCE> oldLinkedEntity = oldAsSource == null ? null
-            : new RelationshipChangeSystem.LinkedEntity<>(oldAsSource.isValid() ? oldAsSource : null,
-                tracker == null ? null : tracker.getIdentity(oldAsSource));
+            : new RelationshipChangeSystem.LinkedEntity<>(oldAsSource.isValid() ? oldAsSource : null, oldTargetId);
         sourceStore.invoke(new RelationshipChangeSystem.ChangeEvent<>((GenericRelationshipType<SOURCE, SOURCE, LINK_DATA>) type,
             kind, sourceLinkedEntity, targetLinkedEntity, oldLinkedEntity, oldData, data));
     }
