@@ -60,6 +60,22 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
         return new ExistsQuery<>(sameType, compile(sameQuery));
     }
 
+    @Nonnull
+    public static <ECS_TYPE> RelationshipQuery<ECS_TYPE> existsAny(
+        RelationshipTypeRegistry<ECS_TYPE> registry,
+        Query<ECS_TYPE> targetQuery
+    ) {
+        return new WildcardQuery<>(new WildcardTypes<>(registry, registry), compile(targetQuery));
+    }
+
+    @Nonnull
+    public static <ECS_TYPE> Binding<ECS_TYPE, Object> enumerateAny(
+        RelationshipTypeRegistry<ECS_TYPE> registry,
+        Query<ECS_TYPE> targetQuery
+    ) {
+        return new Binding<>(new WildcardQuery<>(new WildcardTypes<>(registry, registry), compile(targetQuery)));
+    }
+
     /// Must recognise the same combinators {@link #compile} looks inside.
     private static <ECS_TYPE> boolean hasRelationshipCondition(Query<ECS_TYPE> query) {
         if (query instanceof RelationshipQuery<ECS_TYPE>) {
@@ -466,6 +482,7 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
             read.store = store;
             read.evaluation = this;
             read.targetQuery = targetQuery;
+            read.type = type;
             read.binding = binding;
             read.match = match;
             read.truth = Truth.FALSE;
@@ -512,6 +529,7 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
                 link.source = null;
                 link.target = null;
                 link.data = null;
+                link.type = null;
                 link.present = false;
             }
         }
@@ -522,12 +540,14 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
                 var otherLink = other.orderedLinks.get(i);
                 if (otherLink.present) {
                     assert otherLink.target != null;
-                    set(other.bindings.get(i), otherLink.source, otherLink.target, otherLink.data);
+                    assert otherLink.type != null;
+                    set(other.bindings.get(i), otherLink.type, otherLink.source, otherLink.target, otherLink.data);
                 }
             }
         }
 
-        void set(Binding<ECS_TYPE, ?> binding, @Nullable Ref<ECS_TYPE> source, Ref<ECS_TYPE> target, @Nullable Object data) {
+        void set(Binding<ECS_TYPE, ?> binding, GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type,
+            @Nullable Ref<ECS_TYPE> source, Ref<ECS_TYPE> target, @Nullable Object data) {
             var link = links.get(binding);
             if (link == null) {
                 link = availableLinks.pollFirst();
@@ -539,6 +559,7 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
             link.source = source;
             link.target = target;
             link.data = data;
+            link.type = type;
             link.present = true;
         }
 
@@ -548,6 +569,7 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
             link.source = null;
             link.target = null;
             link.data = null;
+            link.type = null;
             link.present = false;
         }
 
@@ -594,6 +616,8 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
         @Nullable
         private RelationshipQuery<ECS_TYPE> targetQuery;
         @Nullable
+        private GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type;
+        @Nullable
         private Binding<ECS_TYPE, ?> binding;
         @Nullable
         private Runnable match;
@@ -603,7 +627,7 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
 
         @Override
         public void accept(@Nullable Ref<ECS_TYPE> target, @Nullable Object data) {
-            assert store != null && evaluation != null && targetQuery != null;
+            assert store != null && evaluation != null && targetQuery != null && type != null;
             if (supplied != null && target != null && supplied.contains(target)) return;
             if (match == null && truth == Truth.TRUE) return;
             var current = target == null || !target.isValid() || target.getStore() != store
@@ -617,12 +641,12 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
             assert binding != null;
             var existing = evaluation.get(binding);
             if (existing != null && existing.present) {
-                if (existing.source == null && existing.target == target) {
+                if (existing.type == type && existing.source == null && existing.target == target) {
                     targetQuery.emit(store, target, evaluation, match);
                 }
                 return;
             }
-            evaluation.set(binding, null, target, data);
+            evaluation.set(binding, type, null, target, data);
             try {
                 targetQuery.emit(store, target, evaluation, match);
             } finally {
@@ -634,6 +658,7 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
             store = null;
             evaluation = null;
             targetQuery = null;
+            type = null;
             binding = null;
             match = null;
             supplied = null;
@@ -686,6 +711,8 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
 
     static final class BoundLink<ECS_TYPE> {
         @Nullable
+        GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type;
+        @Nullable
         Ref<ECS_TYPE> source;
         @Nullable
         Ref<ECS_TYPE> target;
@@ -698,16 +725,20 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
         // most queries bind one link
         private final IdentityHashMap<Binding<ECS_TYPE, ?>, Ref<ECS_TYPE>> sources = new IdentityHashMap<>(1);
         private final IdentityHashMap<Binding<ECS_TYPE, ?>, Ref<ECS_TYPE>> targets = new IdentityHashMap<>(1);
+        private final IdentityHashMap<Binding<ECS_TYPE, ?>, GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?>> types =
+            new IdentityHashMap<>(1);
 
         private void capture(Evaluation<ECS_TYPE> evaluation) {
             sources.clear();
             targets.clear();
+            types.clear();
             for (int i = 0; i < evaluation.orderedLinks.size(); i++) {
                 var link = evaluation.orderedLinks.get(i);
                 if (link.present) {
                     var binding = evaluation.bindings.get(i);
                     sources.put(binding, link.source);
                     targets.put(binding, link.target);
+                    types.put(binding, link.type);
                 }
             }
         }
@@ -715,6 +746,7 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
         private void clear() {
             sources.clear();
             targets.clear();
+            types.clear();
         }
 
         private boolean matches(Evaluation<ECS_TYPE> evaluation) {
@@ -726,7 +758,7 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
                 }
                 present++;
                 var binding = evaluation.bindings.get(i);
-                if (sources.get(binding) != link.source || targets.get(binding) != link.target) {
+                if (types.get(binding) != link.type || sources.get(binding) != link.source || targets.get(binding) != link.target) {
                     return false;
                 }
             }
@@ -1003,7 +1035,7 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
         if (entity == null) {
             return evaluation.readHolder(store, type, targetQuery, null, null);
         }
-        var outgoing = evaluation.getComponent(store, entity, type.getSourceType());
+        var outgoing = RelationshipStorage.getOutgoing(type, component -> evaluation.getComponent(store, entity, component));
         var result = evaluation.hasUnresolvedTargets(entity, type) ? Truth.UNKNOWN : Truth.FALSE;
         if (outgoing == null) {
             return result;
@@ -1020,6 +1052,85 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
             }
         }
         return result;
+    }
+
+    private record WildcardTypes<SOURCE, TARGET>(
+        RelationshipTypeRegistry<SOURCE> sources,
+        RelationshipTypeRegistry<TARGET> targets
+    ) {
+        private WildcardTypes {
+            Objects.requireNonNull(sources, "sources");
+            Objects.requireNonNull(targets, "targets");
+        }
+
+        @SuppressWarnings("unchecked")
+        private List<GenericRelationshipType<SOURCE, TARGET, ?>> getTypes() {
+            var selected = new ArrayList<GenericRelationshipType<SOURCE, TARGET, ?>>();
+            for (var type : sources.getRegisteredTypes()) {
+                if (type.getTargetRelationshipTypeRegistry() == targets) {
+                    selected.add((GenericRelationshipType<SOURCE, TARGET, ?>) type);
+                }
+            }
+            return selected;
+        }
+    }
+
+    private static final class WildcardQuery<ECS_TYPE> extends RelationshipQuery<ECS_TYPE> {
+        private final WildcardTypes<ECS_TYPE, ECS_TYPE> types;
+        private final RelationshipQuery<ECS_TYPE> targetQuery;
+
+        private WildcardQuery(WildcardTypes<ECS_TYPE, ECS_TYPE> types, RelationshipQuery<ECS_TYPE> targetQuery) {
+            this.types = types;
+            this.targetQuery = targetQuery;
+        }
+
+        @Override
+        boolean containsRecursion() {
+            return targetQuery.containsRecursion();
+        }
+
+        @Nonnull @Override
+        Truth getPossibility(Archetype<ECS_TYPE> archetype, Admission admission) {
+            for (var type : types.getTypes()) {
+                if (type.getSourceType().test(archetype)) return Truth.UNKNOWN;
+            }
+            return linkPossibility(false, types.sources(), admission);
+        }
+
+        @Nonnull @Override
+        Truth evaluate(Store<ECS_TYPE> store, @Nullable Ref<ECS_TYPE> entity, Evaluation<ECS_TYPE> evaluation) {
+            if (!evaluation.isAccessible(store, entity)) return Truth.UNKNOWN;
+            var result = Truth.FALSE;
+            for (var type : types.getTypes()) {
+                var current = evaluateTargets(type, targetQuery, store, entity, evaluation);
+                if (current == Truth.TRUE) return Truth.TRUE;
+                if (current == Truth.UNKNOWN) result = Truth.UNKNOWN;
+            }
+            return result;
+        }
+
+        @Override
+        void emit(Store<ECS_TYPE> store, @Nullable Ref<ECS_TYPE> entity, Evaluation<ECS_TYPE> evaluation, Runnable match) {
+            match.run();
+        }
+
+        @Override
+        public boolean requiresComponentType(ComponentType<ECS_TYPE, ?> componentType) {
+            return targetQuery.requiresComponentType(componentType);
+        }
+
+        @Override
+        public void validateRegistry(ComponentRegistry<ECS_TYPE> registry) {
+            if (types.sources().getComponentRegistry() != registry) {
+                throw new IllegalArgumentException("Wildcard relationship query is for a different registry");
+            }
+            targetQuery.validateRegistry(types.targets().getComponentRegistry());
+        }
+
+        @Override
+        public void validate() {
+            targetQuery.validate();
+        }
     }
 
     private static final class ExistsQuery<ECS_TYPE> extends RelationshipQuery<ECS_TYPE> {
@@ -1144,12 +1255,22 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
 
     /// One enumerated relationship. Each result carries its source, its target and its link data.
     public static final class Binding<ECS_TYPE, LINK_DATA> extends RelationshipQuery<ECS_TYPE> {
+        @Nullable
         private final GenericRelationshipType<ECS_TYPE, ECS_TYPE, LINK_DATA> type;
+        @Nullable
+        private final WildcardQuery<ECS_TYPE> wildcard;
         private final RelationshipQuery<ECS_TYPE> targetQuery;
 
         private Binding(GenericRelationshipType<ECS_TYPE, ECS_TYPE, LINK_DATA> type, RelationshipQuery<ECS_TYPE> targetQuery) {
             this.type = Objects.requireNonNull(type, "type");
+            this.wildcard = null;
             this.targetQuery = Objects.requireNonNull(targetQuery, "targetQuery");
+        }
+
+        private Binding(WildcardQuery<ECS_TYPE> wildcard) {
+            this.type = null;
+            this.wildcard = wildcard;
+            this.targetQuery = wildcard.targetQuery;
         }
 
         @Override
@@ -1159,27 +1280,41 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
 
         @Nonnull @Override
         Truth getPossibility(Archetype<ECS_TYPE> archetype, Admission admission) {
+            if (wildcard != null) return wildcard.getPossibility(archetype, admission);
+            assert type != null;
             return linkPossibility(type.getSourceType().test(archetype), type.getRelationshipTypeRegistry(), admission);
         }
 
         @Nonnull @Override
         Truth evaluate(Store<ECS_TYPE> store, @Nullable Ref<ECS_TYPE> entity, Evaluation<ECS_TYPE> evaluation) {
+            if (wildcard != null) return wildcard.evaluate(store, entity, evaluation);
+            assert type != null;
             return evaluateTargets(type, targetQuery, store, entity, evaluation);
         }
 
         @Override
         void emit(Store<ECS_TYPE> store, @Nullable Ref<ECS_TYPE> entity, Evaluation<ECS_TYPE> evaluation, Runnable match) {
+            if (wildcard != null) {
+                for (var current : wildcard.types.getTypes()) emit(current, store, entity, evaluation, match);
+            } else {
+                assert type != null;
+                emit(type, store, entity, evaluation, match);
+            }
+        }
+
+        private void emit(GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type,
+            Store<ECS_TYPE> store, @Nullable Ref<ECS_TYPE> entity, Evaluation<ECS_TYPE> evaluation, Runnable match) {
             if (entity == null) {
                 evaluation.readHolder(store, type, targetQuery, this, match);
                 return;
             }
-            var outgoing = evaluation.getComponent(store, entity, type.getSourceType());
+            var outgoing = RelationshipStorage.getOutgoing(type, component -> evaluation.getComponent(store, entity, component));
             if (outgoing == null) {
                 return;
             }
             var existing = evaluation.get(this);
             if (existing != null && existing.present) {
-                if (existing.source != entity) {
+                if (existing.type != type || existing.source != entity) {
                     return;
                 }
                 for (int i = 0; i < outgoing.size(); i++) {
@@ -1198,7 +1333,7 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
                     || targetQuery.evaluate(store, target, evaluation) != Truth.TRUE) {
                     continue;
                 }
-                evaluation.set(this, entity, target, getLinkData(type, outgoing, i));
+                evaluation.set(this, type, entity, target, getLinkData(type, outgoing, i));
                 try {
                     targetQuery.emit(store, target, evaluation, match);
                 } finally {
@@ -1209,24 +1344,29 @@ public abstract class RelationshipQuery<ECS_TYPE> implements Query<ECS_TYPE> {
 
         @Override
         public boolean requiresComponentType(ComponentType<ECS_TYPE, ?> componentType) {
-            return type.getSourceType() == componentType || targetQuery.requiresComponentType(componentType);
+            return (type != null && type.getSourceType() == componentType) || targetQuery.requiresComponentType(componentType);
         }
 
         @Override
         public void validateRegistry(ComponentRegistry<ECS_TYPE> registry) {
+            if (wildcard != null) {
+                wildcard.validateRegistry(registry);
+                return;
+            }
+            assert type != null;
             type.getSourceType().validateRegistry(registry);
             targetQuery.validateRegistry(registry);
         }
 
         @Override
         public void validate() {
-            type.getSourceType().validate();
+            if (type != null) type.getSourceType().validate();
             targetQuery.validate();
         }
 
-        @Nonnull
+        @Nonnull @SuppressWarnings("unchecked")
         Class<LINK_DATA> getDataClass() {
-            return type.getDescriptor().linkDataClass();
+            return type == null ? (Class<LINK_DATA>) Object.class : type.getDescriptor().linkDataClass();
         }
     }
 
