@@ -599,6 +599,26 @@ class RelationshipTrackerTest {
     }
 
     @Test
+    void aNamedTypeWithoutPersistenceKeepsItsRecordWhileBothEndsAreAway() {
+        try (var fixture = new Fixture()) {
+            var type = fixture.registerPersistent("without-persistence",
+                RelationshipTraits.Survival.RETAIN, RelationshipTraits.Survival.RETAIN);
+            var source = fixture.add(fixture.firstStore);
+            var target = fixture.add(fixture.firstStore);
+            relationships.addTarget(fixture.firstStore, source.ref(), type, target.ref());
+
+            var sourceHolder = fixture.park(source, UnloadReason.DEACTIVATION);
+            var targetHolder = fixture.park(target, UnloadReason.DEACTIVATION);
+
+            assertEquals(true, fixture.tracker.hasRecordedLinks());
+            assertEquals(true, fixture.tracker.contains(type, source.id(), target.id()));
+            var returnedTarget = fixture.load(target.id(), targetHolder, fixture.firstStore);
+            var returnedSource = fixture.load(source.id(), sourceHolder, fixture.firstStore);
+            assertSame(returnedTarget, relationships.getFirstTarget(returnedSource, type));
+        }
+    }
+
+    @Test
     void removalFromAReconnectCallbackIsRejectedAndKeepsTheRestoredAssociation() {
         try (var fixture = new Fixture()) {
             var type = fixture.registerRuntime(

@@ -139,6 +139,194 @@ class RelationshipPersistenceTest {
     }
 
     @Test
+    void aSavedLinkDropsItsAwayRecordAndRestoresWhenTheSourceLoadsFirst() {
+        try (var fixture = new Fixture()) {
+            var source = fixture.add(new UUID(0, 1));
+            var target = fixture.add(new UUID(0, 2));
+            var type = schemaType(fixture.types);
+            relationships.addTarget(fixture.store, source, type, target, new Slot(7));
+            var sourceHolder = park(fixture, source);
+            assertEquals(true, fixture.tracker.hasRecordedLinks());
+
+            var targetHolder = park(fixture, target);
+
+            assertEquals(false, fixture.tracker.hasRecordedLinks());
+            assertEquals(false, fixture.tracker.contains(type, new UUID(0, 1), new UUID(0, 2)));
+            assertEquals(1, sourceHolder.getComponent(fixture.persistence.getComponentType()).getRecords().size());
+            var returnedSource = reload(fixture, sourceHolder);
+            var returnedTarget = reload(fixture, targetHolder);
+            assertSame(returnedTarget, relationships.getFirstTarget(returnedSource, type));
+            assertEquals(7, relationships.getData(returnedSource, type, returnedTarget).value);
+        }
+    }
+
+    @Test
+    void aSavedTargetLoadedFirstHasNoUnresolvedIncomingUntilItsSourceReturns() {
+        try (var fixture = new Fixture()) {
+            var source = fixture.add(new UUID(0, 1));
+            var target = fixture.add(new UUID(0, 2));
+            var type = schemaType(fixture.types);
+            relationships.addTarget(fixture.store, source, type, target, new Slot(7));
+            var sourceHolder = park(fixture, source);
+            var targetHolder = park(fixture, target);
+
+            var returnedTarget = reload(fixture, targetHolder);
+
+            assertEquals(false, fixture.tracker.hasUnresolvedIncoming(type, returnedTarget));
+            assertEquals(0, relationships.getIncomingCount(returnedTarget, type));
+            var returnedSource = reload(fixture, sourceHolder);
+            assertSame(returnedTarget, relationships.getFirstTarget(returnedSource, type));
+            assertEquals(7, relationships.getData(returnedSource, type, returnedTarget).value);
+        }
+    }
+
+    @Test
+    void aRuntimeLinkKeepsItsRecordWhileBothEndsAreAwayFromAPersistentInstallation() {
+        try (var fixture = new Fixture()) {
+            var source = fixture.add(new UUID(0, 1));
+            var target = fixture.add(new UUID(0, 2));
+            var type = fixture.types.registerRelationship(Slot.class, Fixture.RETAINING);
+            var data = new Slot(7);
+            relationships.addTarget(fixture.store, source, type, target, data);
+
+            var sourceHolder = park(fixture, source);
+            var targetHolder = park(fixture, target);
+
+            assertEquals(true, fixture.tracker.hasRecordedLinks());
+            assertEquals(true, fixture.tracker.contains(type, new UUID(0, 1), new UUID(0, 2)));
+            var returnedTarget = reload(fixture, targetHolder);
+            var returnedSource = reload(fixture, sourceHolder);
+            assertSame(data, relationships.getData(returnedSource, type, returnedTarget));
+        }
+    }
+
+    @Test
+    void aSavedLinkKeepsItsRecordUntilBothPendingTransfersAreClassified() {
+        try (var fixture = new Fixture()) {
+            var source = fixture.add(new UUID(0, 1));
+            var target = fixture.add(new UUID(0, 2));
+            var type = schemaType(fixture.types);
+            relationships.addTarget(fixture.store, source, type, target, new Slot(7));
+            var sourceHolder = park(fixture, source, UnloadReason.PENDING, true);
+            var targetHolder = park(fixture, target, UnloadReason.PENDING, true);
+            assertEquals(true, fixture.tracker.hasRecordedLinks());
+
+            fixture.tracker.onUnloadResolved(new UUID(0, 1), source, UnloadReason.TRANSFER);
+
+            assertEquals(true, fixture.tracker.hasRecordedLinks());
+            fixture.tracker.onUnloadResolved(new UUID(0, 2), target, UnloadReason.TRANSFER);
+            assertEquals(false, fixture.tracker.hasRecordedLinks());
+            var returnedSource = reload(fixture, sourceHolder);
+            var returnedTarget = reload(fixture, targetHolder);
+            assertEquals(7, relationships.getData(returnedSource, type, returnedTarget).value);
+        }
+    }
+
+    @Test
+    void cleanupOfASavedLinkStaysOwedWhileBothEndsAreAway() {
+        try (var fixture = new Fixture()) {
+            var source = fixture.add(new UUID(0, 1));
+            var target = fixture.add(new UUID(0, 2));
+            var type = fixture.types.registerRelationship("relwind:test/away-cleanup",
+                RelationshipTraits.defaults().retainOnDeactivation());
+            relationships.addTarget(fixture.store, source, type, target);
+            var sourceHolder = park(fixture, source, UnloadReason.DEACTIVATION, false);
+            var targetHolder = park(fixture, target, UnloadReason.PENDING, true);
+
+            fixture.tracker.onUnloadResolved(new UUID(0, 2), target, UnloadReason.TRANSFER);
+
+            assertEquals(true, fixture.tracker.hasRecordedLinks());
+            assertEquals(1, sourceHolder.getComponent(fixture.persistence.getComponentType()).getRecords().size());
+            var returnedSource = reload(fixture, sourceHolder);
+            reload(fixture, targetHolder);
+            assertEquals(null, fixture.store.getComponent(returnedSource, fixture.persistence.getComponentType()));
+            assertEquals(0, relationships.getTargetCount(returnedSource, type));
+            assertEquals(false, fixture.tracker.hasRecordedLinks());
+        }
+    }
+
+    @Test
+    void aSavedCascadeRemainsOwedWhenItsSourceIsAway() {
+        try (var fixture = new Fixture()) {
+            var source = fixture.add(new UUID(0, 1));
+            var target = fixture.add(new UUID(0, 2));
+            var type = fixture.types.registerRelationship("relwind:test/away-cascade",
+                RelationshipTraits.defaults().retainOnDeactivation().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
+            relationships.addTarget(fixture.store, source, type, target);
+            var sourceHolder = park(fixture, source);
+            var targetHolder = fixture.store.removeEntity(target, RemoveReason.REMOVE);
+
+            fixture.tracker.onEntityDeleted(new UUID(0, 2), target, targetHolder);
+
+            assertEquals(true, fixture.tracker.hasPendingDeletion(new UUID(0, 1), fixture.store));
+            assertEquals(Set.of(), fixture.deleted);
+            var returned = fixture.add(fixture.registry.serialize(sourceHolder));
+            assertEquals(false, returned.isValid());
+            assertEquals(false, fixture.tracker.hasPendingDeletion(new UUID(0, 1), fixture.store));
+        }
+    }
+
+    @Test
+    void aNativeSavedBatchKeepsTheRecordUntilTheLaterRemovalClassification() {
+        try (var fixture = new Fixture()) {
+            fixture.registry.registerSystem(new PrepareSavedUnload(fixture));
+            var source = fixture.add(new UUID(0, 1));
+            var target = fixture.add(new UUID(0, 2));
+            var type = fixture.types.registerRelationship("relwind:test/batch-cleanup",
+                RelationshipTraits.defaults().retainOnDeactivation());
+            relationships.addTarget(fixture.store, source, type, target);
+
+            var holders = removeTogether(fixture.store, source, target);
+            fixture.tracker.onEntityUnloaded(new UUID(0, 1), source, UnloadReason.DEACTIVATION, holders[0]);
+
+            assertEquals(true, fixture.tracker.hasRecordedLinks());
+            fixture.tracker.onEntityUnloaded(new UUID(0, 2), target, UnloadReason.PENDING, holders[1]);
+            assertEquals(true, fixture.tracker.hasRecordedLinks());
+            fixture.tracker.onUnloadResolved(new UUID(0, 2), target, UnloadReason.TRANSFER);
+            assertEquals(null, holders[0].getComponent(fixture.persistence.getComponentType()));
+            assertEquals(false, fixture.tracker.hasRecordedLinks());
+        }
+    }
+
+    private static Holder<Object> park(Fixture fixture, Ref<Object> ref) {
+        return park(fixture, ref, UnloadReason.DEACTIVATION, true);
+    }
+
+    private static Holder<Object> park(Fixture fixture, Ref<Object> ref, UnloadReason reason, boolean keepHolder) {
+        var id = fixture.store.getComponent(ref, fixture.identityType).id;
+        if (!keepHolder) fixture.tracker.onEntityUnloaded(id, ref, reason);
+        var holder = fixture.store.removeEntity(ref, RemoveReason.UNLOAD);
+        if (keepHolder) fixture.tracker.onEntityUnloaded(id, ref, reason, holder);
+        return holder;
+    }
+
+    private static Ref<Object> reload(Fixture fixture, Holder<Object> holder) {
+        var ref = fixture.add(fixture.registry.serialize(holder));
+        fixture.persistence.restore(ref);
+        return ref;
+    }
+
+    @SafeVarargs
+    private static Holder<Object>[] removeTogether(Store<Object> store, Ref<Object>... refs) {
+        return store.removeEntities(refs, RemoveReason.UNLOAD);
+    }
+
+    private static final class PrepareSavedUnload extends com.hypixel.hytale.component.system.RefSystem<Object> {
+        private final Fixture fixture;
+        private PrepareSavedUnload(Fixture fixture) { this.fixture = fixture; }
+        @Override
+        public com.hypixel.hytale.component.query.Query<Object> getQuery() {
+            return com.hypixel.hytale.component.query.Query.any();
+        }
+        @Override
+        public void onEntityAdded(Ref<Object> ref, AddReason reason, Store<Object> store, CommandBuffer<Object> commands) { }
+        @Override
+        public void onEntityRemove(Ref<Object> ref, RemoveReason reason, Store<Object> store, CommandBuffer<Object> commands) {
+            fixture.tracker.onEntityUnloading(commands, store.getComponent(ref, fixture.identityType).id, ref);
+        }
+    }
+
+    @Test
     void deletingTheSourceTraitSavesTheCascadeSourceDisposition() {
         try (var fixture = new Fixture()) {
             var source = fixture.add(UUID.randomUUID());

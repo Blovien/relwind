@@ -231,6 +231,19 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
                 link.targetRef = null;
             }
             link.resolved = false;
+            dropSavedAwayLink(link);
+        }
+    }
+
+    private static void dropSavedAwayLink(Link link) {
+        // invalid references can still be waiting for their unload classification
+        if (link.sourceRef != null || link.targetRef != null || link.pending != 0 || link.cascade
+            || !link.type.getDescriptor().isPersistent()) return;
+        var sourceTypes = link.type.getRelationshipTypeRegistry();
+        var sourceTracker = sourceTypes.getTracker();
+        if (sourceTracker != null && sourceTypes.getPersistence() != null && isCurrent(link)
+            && !sourceTracker.getPendingCleanup(link.sourceId).contains(link)) {
+            unfile(link);
         }
     }
 
@@ -352,6 +365,8 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
             link.pending--;
             if (!isRetainedOn(link.type.getDescriptor(), reason)) {
                 removeByPolicy(link, unloaded);
+            } else {
+                dropSavedAwayLink(link);
             }
         }
         resolveLinks(key);
