@@ -49,8 +49,8 @@ Relwind supports one server version for each release channel:
 
 | Channel | Hytale version | Build command |
 | --- | --- | --- |
-| Pre-release (default) | `0.7.0-pre.3.1` | `mvn clean install` |
-| Release | `0.6.8` | `mvn -Dhytale.channel=release clean install` |
+| Pre-release (default) | e.g. `0.7.0-pre.3.1` | `mvn clean install` |
+| Release | e.g. `0.6.8` | `mvn -Dhytale.channel=release clean install` |
 
 ## Install on a server
 
