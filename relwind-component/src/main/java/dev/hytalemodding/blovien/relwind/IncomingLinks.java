@@ -64,6 +64,14 @@ final class IncomingLinks<SOURCE, TARGET> implements Component<TARGET> {
             }
         }
         size++;
+        if (positions == null && size >= INDEX_SOURCES) {
+            assert sources != null;
+            positions = new Reference2IntOpenHashMap<>(size);
+            positions.defaultReturnValue(-1);
+            for (int i = 0; i < size; i++) {
+                positions.put(sources[i], i);
+            }
+        }
     }
 
     boolean remove(Ref<SOURCE> removedSource) {
@@ -81,13 +89,6 @@ final class IncomingLinks<SOURCE, TARGET> implements Component<TARGET> {
         }
 
         assert sources != null;
-        if (positions == null && size >= INDEX_SOURCES) {
-            positions = new Reference2IntOpenHashMap<>(size);
-            positions.defaultReturnValue(-1);
-            for (int i = 0; i < size; i++) {
-                positions.put(sources[i], i);
-            }
-        }
         int found;
         if (positions == null) {
             found = -1;
