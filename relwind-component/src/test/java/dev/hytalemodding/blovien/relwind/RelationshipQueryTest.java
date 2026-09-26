@@ -241,16 +241,9 @@ class RelationshipQueryTest {
                 assertTrue(bean.isThreadAllocatedMemorySupported());
                 bean.setThreadAllocatedMemoryEnabled(true);
                 long thread = Thread.currentThread().threadId();
-                long minimum = Long.MAX_VALUE;
-                // HotSpot compilation is asynchronous. A constrained runner can finish compiling during
-                // the first measured batch even after the fixed warmup. A real per-hop allocation remains
-                // in every batch, while taking the minimum excludes that one-time compiler transition.
-                for (int sample = 0; sample < 5; sample++) {
-                    long before = bean.getThreadAllocatedBytes(thread);
-                    runReachableSearches(anchor, query, iterations);
-                    minimum = Math.min(minimum, bean.getThreadAllocatedBytes(thread) - before);
-                }
-                return minimum;
+                long before = bean.getThreadAllocatedBytes(thread);
+                runReachableSearches(anchor, query, iterations);
+                return bean.getThreadAllocatedBytes(thread) - before;
             } finally {
                 tracker.close();
             }

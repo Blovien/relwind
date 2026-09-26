@@ -560,12 +560,26 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         Store<ECS_TYPE> context
     ) {
         var targetKey = keyOf(target, context);
-        var retained = getOutgoing(source);
-        for (Link link : retained) {
+        return containsHolderLink(sources.get(source), type, holder, targetKey)
+            || containsHolderLink(cleanupPending.get(source), type, holder, targetKey);
+    }
+
+    private static boolean containsHolderLink(
+        @Nullable Object records,
+        GenericRelationshipType<?, ?, ?> type,
+        Holder<?> holder,
+        @Nullable Object targetKey
+    ) {
+        if (records == null) return false;
+        if (records instanceof Link link) {
             if (link.type == type && link.sourceHolder == holder && link.targetId.equals(targetKey)) return true;
+            return false;
         }
-        var cleanups = getPendingCleanup(source);
-        for (Link link : cleanups) {
+        // Outgoing and cleanup records both use an ArrayList when more than one record is retained.
+        @SuppressWarnings("unchecked")
+        var links = (List<Link>) records;
+        for (int i = 0; i < links.size(); i++) {
+            var link = links.get(i);
             if (link.type == type && link.sourceHolder == holder && link.targetId.equals(targetKey)) return true;
         }
         return false;
@@ -578,7 +592,14 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
 
     synchronized boolean hasUnresolvedOutgoing(GenericRelationshipType<ECS_TYPE, ?, ?> type, Ref<ECS_TYPE> source,
         @Nullable Object sourceIdentity) {
-        for (var link : getOutgoing(keyOf(sourceIdentity, source.getStore()))) {
+        var retained = sources.get(keyOf(sourceIdentity, source.getStore()));
+        if (retained == null) return false;
+        if (retained instanceof Link link) return link.type == type && !link.resolved;
+        // Multiple outgoing records use an ArrayList. Scan it without allocating an iterator per hop.
+        @SuppressWarnings("unchecked")
+        var links = (List<Link>) retained;
+        for (int i = 0; i < links.size(); i++) {
+            var link = links.get(i);
             if (link.type == type && !link.resolved) return true;
         }
         return false;
