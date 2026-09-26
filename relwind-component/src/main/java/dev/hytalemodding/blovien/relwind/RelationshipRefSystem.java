@@ -7,7 +7,9 @@
 package dev.hytalemodding.blovien.relwind;
 
 import com.hypixel.hytale.component.AddReason;
+import com.hypixel.hytale.component.Archetype;
 import com.hypixel.hytale.component.CommandBuffer;
+import com.hypixel.hytale.component.ComponentRegistry;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
@@ -38,6 +40,11 @@ public abstract class RelationshipRefSystem<ECS_TYPE, LINK_DATA> extends RefSyst
     }
 
     protected void onRelationshipSystemUnregistered() {
+    }
+
+    @Override
+    public final boolean test(ComponentRegistry<ECS_TYPE> componentRegistry, Archetype<ECS_TYPE> archetype) {
+        return lifecycle.query().testLoaded(archetype);
     }
 
     @Override

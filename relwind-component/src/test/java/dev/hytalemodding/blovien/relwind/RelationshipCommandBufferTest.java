@@ -71,6 +71,31 @@ class RelationshipCommandBufferTest {
     }
 
     @Test
+    void aBufferedPutReplacesAnExclusiveTargetWhenTheBufferDrains() {
+        try (var fixture = new Fixture()) {
+            var source = fixture.addEntity();
+            var oldTarget = fixture.addEntity();
+            var newTarget = fixture.addEntity();
+            var initial = new LinkData("initial");
+            var replacement = new LinkData("replacement");
+            relationships.addTarget(fixture.store, source, fixture.type, oldTarget, initial);
+            fixture.action.action = (store, buffer) -> {
+                relationships.putTarget(buffer, source, fixture.type, newTarget, replacement);
+                assertSame(oldTarget, relationships.getFirstTarget(source, fixture.type));
+                assertSame(initial, relationships.getData(source, fixture.type, oldTarget));
+                assertEquals(0, relationships.getIncomingCount(newTarget, fixture.type));
+            };
+
+            fixture.store.tick(0.05f);
+
+            assertSame(newTarget, relationships.getFirstTarget(source, fixture.type));
+            assertSame(replacement, relationships.getData(source, fixture.type, newTarget));
+            assertEquals(0, relationships.getIncomingCount(oldTarget, fixture.type));
+            assertEquals(1, relationships.getIncomingCount(newTarget, fixture.type));
+        }
+    }
+
+    @Test
     void aQueuedCommandRejectsAnAccessorOrLinkedEntityFromAnotherStore() {
         try (var fixture = new Fixture()) {
             var source = fixture.addEntity();
@@ -116,7 +141,7 @@ class RelationshipCommandBufferTest {
             var otherTarget = fixture.addEntity();
             var otherType = new RelationshipTypeRegistry<>(fixture.registry).registerRelationship(
                 LinkData.class,
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
             var initial = new LinkData("initial");
             var replacement = new LinkData("replacement");
             var trace = new ArrayList<String>();
@@ -830,7 +855,7 @@ class RelationshipCommandBufferTest {
         private final RelationshipTypeRegistry<Object> types = new RelationshipTypeRegistry<>(registry);
         private final RelationshipType<Object, LinkData> type = types.registerRelationship(
             LinkData.class,
-            RelationshipRules.single());
+            RelationshipTraits.defaults().exclusive());
         private final ActionSystem action = new ActionSystem(triggerType);
         private final Store<Object> store;
 

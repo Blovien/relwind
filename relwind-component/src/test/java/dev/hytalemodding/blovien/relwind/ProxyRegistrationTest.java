@@ -42,7 +42,7 @@ class ProxyRegistrationTest {
         int bare = componentRegistry.getData().getComponentSize();
         var types = new RelationshipTypeRegistry<>(componentRegistry, proxy);
 
-        types.registerRelationship("relwind:test/follows", RelationshipRules.multiple());
+        types.registerRelationship("relwind:test/follows", RelationshipTraits.defaults());
 
         assertEquals(bare + 2, componentRegistry.getData().getComponentSize(),
             "a registered type adds its outgoing and incoming storage");
@@ -59,7 +59,7 @@ class ProxyRegistrationTest {
         int bare = componentRegistry.getData().getComponentSize();
         var types = new RelationshipTypeRegistry<>(componentRegistry, proxy);
         int installed = componentRegistry.getData().getComponentSize();
-        var follows = types.registerRelationship("relwind:test/follows", RelationshipRules.multiple());
+        var follows = types.registerRelationship("relwind:test/follows", RelationshipTraits.defaults());
 
         types.unregisterRelationship(follows);
 

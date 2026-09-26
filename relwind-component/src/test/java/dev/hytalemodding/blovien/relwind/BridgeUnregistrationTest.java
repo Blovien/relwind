@@ -94,7 +94,7 @@ class BridgeUnregistrationTest {
     void aCommandOnAnUnregisteredTypeFailsWhereverItsTargetsLive() {
         try (var channels = new Channels()) {
             var anchoredTo = channels.anchoredTo();
-            var follows = channels.entityTypes.registerRelationship(RelationshipRules.multiple());
+            var follows = channels.entityTypes.registerRelationship(RelationshipTraits.defaults());
             var source = channels.entity("source");
             var block = channels.block(7);
             var other = channels.entity("other");
@@ -162,7 +162,7 @@ class BridgeUnregistrationTest {
                 blockTypes,
                 String.class,
                 Codec.STRING,
-                RelationshipRules.single().retainOnDeactivation());
+                RelationshipTraits.defaults().exclusive().retainOnDeactivation());
         }
 
         private Ref<Entities> entity(String id) {

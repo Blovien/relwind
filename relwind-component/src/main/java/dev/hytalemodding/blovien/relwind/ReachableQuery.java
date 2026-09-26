@@ -56,9 +56,8 @@ final class ReachableQuery<ECS_TYPE> extends RelationshipQuery<ECS_TYPE> {
     }
 
     @Nonnull @Override
-    Truth getPossibility(Archetype<ECS_TYPE> archetype) {
-        return getLinkType().test(archetype) || type.getRelationshipTypeRegistry().getTracker() != null
-            ? Truth.UNKNOWN : Truth.FALSE;
+    Truth getPossibility(Archetype<ECS_TYPE> archetype, Admission admission) {
+        return linkPossibility(getLinkType().test(archetype), type.getRelationshipTypeRegistry(), admission);
     }
 
     @Nonnull @Override

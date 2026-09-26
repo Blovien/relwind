@@ -54,7 +54,7 @@ class RelationshipAdapterRegistrationTest {
             var follows = register(types, "test:follows");
             var callbacks = new ArrayList<String>();
             fixture.registry().registerSystem(new LogicalObserver<>(follows, callbacks));
-            var dataType = types.registerRelationship(String.class, RelationshipRules.single());
+            var dataType = types.registerRelationship(String.class, RelationshipTraits.defaults().exclusive());
 
             assertThrows(IllegalArgumentException.class,
                 () -> fixture.registry().registerSystem(new LogicalObserver<>(dataType, callbacks)));
@@ -414,7 +414,7 @@ class RelationshipAdapterRegistrationTest {
     }
 
     private static RelationshipType<Object, Void> register(RelationshipTypeRegistry<Object> types, String id) {
-        return types.registerRelationship(id, RelationshipRules.single());
+        return types.registerRelationship(id, RelationshipTraits.defaults().exclusive());
     }
 
     private abstract static class RecordingTickingAdapter extends RelationshipTickingSystem<Object, Void> {

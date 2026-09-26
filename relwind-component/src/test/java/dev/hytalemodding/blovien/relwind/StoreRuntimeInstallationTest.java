@@ -47,7 +47,7 @@ class StoreRuntimeInstallationTest {
         try (fixture) {
             var type = fixture.types.registerRelationship(
                 "test:runtime-deferred",
-                RelationshipRules.single().retainOnDeactivation());
+                RelationshipTraits.defaults().exclusive().retainOnDeactivation());
             var source = fixture.add();
             var target = fixture.add();
             relationships.addTarget(fixture.store, source.ref(), type, target.ref());
@@ -74,7 +74,7 @@ class StoreRuntimeInstallationTest {
         try (fixture) {
             var type = fixture.types.registerRelationship(
                 "test:runtime-holder",
-                RelationshipRules.single().retainOnDeactivation());
+                RelationshipTraits.defaults().exclusive().retainOnDeactivation());
             var source = fixture.add();
             var target = fixture.add();
             relationships.addTarget(fixture.store, source.ref(), type, target.ref());

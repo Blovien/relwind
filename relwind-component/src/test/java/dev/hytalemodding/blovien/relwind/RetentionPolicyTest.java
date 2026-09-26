@@ -43,7 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-/// A source keeps or releases its attached link storage as its retention policy says, and the
+/// A source keeps or releases its attached link storage as its retention trait says, and the
 /// storage it keeps holds nothing of the links it no longer has.
 class RetentionPolicyTest {
     private static final Relationships relationships = new Relationships();
@@ -59,7 +59,7 @@ class RetentionPolicyTest {
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
             var source = addEntity(store);
             var target = addEntity(store);
-            assertEquals(RelationshipRules.SourceRetention.RELEASE, released.getDescriptor().getSourceRetention());
+            assertEquals(RelationshipTraits.SourceRetention.RELEASE, released.getDescriptor().getSourceRetention());
 
             relationships.addTarget(store, source, released, target, new Payload(1));
             relationships.removeTarget(store, source, released, target);
@@ -77,7 +77,7 @@ class RetentionPolicyTest {
         var registry = new ComponentRegistry<Object>();
         try {
             var types = new RelationshipTypeRegistry<>(registry);
-            var retained = register(types, "retained", RelationshipRules.SourceRetention.RETAIN);
+            var retained = register(types, "retained", RelationshipTraits.SourceRetention.RETAIN);
             var changes = new RetainedMarkerChanges(retained);
             registry.registerSystem(changes);
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
@@ -115,7 +115,7 @@ class RetentionPolicyTest {
         var registry = new ComponentRegistry<Object>();
         try {
             var types = new RelationshipTypeRegistry<>(registry);
-            var retained = register(types, "callbacks", RelationshipRules.SourceRetention.RETAIN);
+            var retained = register(types, "callbacks", RelationshipTraits.SourceRetention.RETAIN);
             var system = new RecordingSystem(retained);
             registry.registerSystem(system);
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
@@ -142,7 +142,7 @@ class RetentionPolicyTest {
         var registry = new ComponentRegistry<Object>();
         try {
             var types = new RelationshipTypeRegistry<>(registry);
-            var type = register(types, "unload-release", RelationshipRules.SourceRetention.RELEASE);
+            var type = register(types, "unload-release", RelationshipTraits.SourceRetention.RELEASE);
             var changes = new MarkerChanges(type);
             registry.registerSystem(changes);
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
@@ -169,7 +169,7 @@ class RetentionPolicyTest {
         var registry = new ComponentRegistry<Object>();
         try {
             var types = new RelationshipTypeRegistry<>(registry);
-            var type = register(types, "unload-retain", RelationshipRules.SourceRetention.RETAIN);
+            var type = register(types, "unload-retain", RelationshipTraits.SourceRetention.RETAIN);
             var changes = new MarkerChanges(type);
             registry.registerSystem(changes);
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
@@ -195,9 +195,9 @@ class RetentionPolicyTest {
     }
 
     @ParameterizedTest
-    @EnumSource(RelationshipRules.SourceRetention.class)
+    @EnumSource(RelationshipTraits.SourceRetention.class)
     void attachedStorageReleasesTheDataOfRemovedLinksAcrossGrowthTrimAndUnload(
-        RelationshipRules.SourceRetention retention
+        RelationshipTraits.SourceRetention retention
     ) {
         var registry = new ComponentRegistry<Object>();
         try {
@@ -208,7 +208,7 @@ class RetentionPolicyTest {
             var targets = addEntities(store, 64);
             var data = growThenRemoveAll(type, store, source, targets);
 
-            assertEquals(retention == RelationshipRules.SourceRetention.RETAIN,
+            assertEquals(retention == RelationshipTraits.SourceRetention.RETAIN,
                 relationships.trimSourceStorage(store, source, type),
                 "retained emptied storage trims away, released storage is already gone");
             assertNull(relationships.getData(source, type, targets.getLast()), "a removed link keeps no data");
@@ -291,7 +291,7 @@ class RetentionPolicyTest {
             var types = new RelationshipTypeRegistry<>(registry);
             var type = types.registerRelationship(
                 Object.class,
-                RelationshipRules.single().retainSourceStorage());
+                RelationshipTraits.defaults().exclusive().retainSourceStorage());
             var listener = new TrimOnIncoming(type);
             registry.registerSystem(listener);
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
@@ -320,11 +320,11 @@ class RetentionPolicyTest {
     private static GenericRelationshipType<Object, Object, Payload> register(
         RelationshipTypeRegistry<Object> types,
         String name,
-        RelationshipRules.SourceRetention retention
+        RelationshipTraits.SourceRetention retention
     ) {
-        var rules = RelationshipRules.multiple();
-        if (retention == RelationshipRules.SourceRetention.RETAIN) rules = rules.retainSourceStorage();
-        return types.registerRelationship("relwind:test/" + name, Payload.class, null, rules);
+        var traits = RelationshipTraits.defaults();
+        if (retention == RelationshipTraits.SourceRetention.RETAIN) traits = traits.retainSourceStorage();
+        return types.registerRelationship("relwind:test/" + name, Payload.class, null, traits);
     }
 
     private static GenericRelationshipType<Object, Object, Payload> registerDefault(
@@ -335,7 +335,7 @@ class RetentionPolicyTest {
             "relwind:test/" + name,
             Payload.class,
             null,
-            RelationshipRules.multiple());
+            RelationshipTraits.defaults());
     }
 
     private static Ref<Object> addEntity(Store<Object> store) {

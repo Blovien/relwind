@@ -60,7 +60,7 @@ class RelationshipsTest {
     void aCommandTakesItsStoreFromTheAccessor() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(FollowData.class, RelationshipRules.single());
+            var follows = types.registerRelationship(FollowData.class, RelationshipTraits.defaults().exclusive());
             var source = fixture.addEntity(new Position(1, 2), null);
             var target = fixture.addEntity(new Position(3, 4), null);
             var otherStore = fixture.registry().addStore(new Object(), EmptyResourceStorage.get());
@@ -86,7 +86,7 @@ class RelationshipsTest {
     void aReadTakesItsStoreFromTheRef() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(FollowData.class, RelationshipRules.single());
+            var follows = types.registerRelationship(FollowData.class, RelationshipTraits.defaults().exclusive());
             var source = fixture.addEntity(new Position(1, 2), null);
             var target = fixture.addEntity(new Position(3, 4), null);
             var otherStore = fixture.registry().addStore(new Object(), EmptyResourceStorage.get());
@@ -109,7 +109,7 @@ class RelationshipsTest {
         var registry = new ComponentRegistry<Object>();
         try {
             var types = new RelationshipTypeRegistry<>(registry);
-            var follows = types.registerRelationship(FollowData.class, RelationshipRules.single());
+            var follows = types.registerRelationship(FollowData.class, RelationshipTraits.defaults().exclusive());
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
             var source = Objects.requireNonNull(store.addEntity(Archetype.empty(), AddReason.SPAWN));
             var target = Objects.requireNonNull(store.addEntity(Archetype.empty(), AddReason.SPAWN));
@@ -140,8 +140,8 @@ class RelationshipsTest {
     void commandsFollowTheStrictAndLenientPreconditionTable() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(FollowData.class, RelationshipRules.single());
-            var watches = types.registerRelationship(FollowData.class, RelationshipRules.multiple());
+            var follows = types.registerRelationship(FollowData.class, RelationshipTraits.defaults().exclusive());
+            var watches = types.registerRelationship(FollowData.class, RelationshipTraits.defaults());
             var source = fixture.addEntity(new Position(1, 2), null);
             var target = fixture.addEntity(new Position(3, 4), null);
             var otherTarget = fixture.addEntity(new Position(5, 6), null);
@@ -197,7 +197,7 @@ class RelationshipsTest {
     void addExposesOneForwardAndReverseLinkThroughTheStore() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(FollowData.class, RelationshipRules.single());
+            var follows = types.registerRelationship(FollowData.class, RelationshipTraits.defaults().exclusive());
             var source = fixture.addEntity(new Position(1, 2), null);
             var target = fixture.addEntity(new Position(3, 4), null);
             var data = new FollowData("near");
@@ -242,19 +242,18 @@ class RelationshipsTest {
 
             relationships.putTarget(fixture.store(), source, follows, target, carried);
             assertForwardAndReverseLink(follows, source, target, carried);
-            assertThrows(
-                IllegalStateException.class,
-                () -> relationships.putTarget(fixture.store(), source, follows, otherTarget, initial)
-            );
-            assertForwardAndReverseLink(follows, source, target, carried);
-            assertEquals(0, relationships.getIncomingCount(otherTarget, follows));
+            relationships.putTarget(fixture.store(), source, follows, otherTarget, initial);
+            assertForwardAndReverseLink(follows, source, otherTarget, initial);
+            assertEquals(0, relationships.getIncomingCount(target, follows));
 
-            relationships.tryRemoveTarget(fixture.store(), source, follows, otherTarget);
+            relationships.tryRemoveTarget(fixture.store(), source, follows, target);
+            relationships.retarget(fixture.store(), source, follows, otherTarget, target);
+            assertForwardAndReverseLink(follows, source, target, initial);
             relationships.retarget(fixture.store(), source, follows, target, otherTarget);
-            assertForwardAndReverseLink(follows, source, otherTarget, carried);
+            assertForwardAndReverseLink(follows, source, otherTarget, initial);
             assertEquals(0, relationships.getIncomingCount(target, follows));
             relationships.retarget(fixture.store(), source, follows, otherTarget, otherTarget);
-            assertForwardAndReverseLink(follows, source, otherTarget, carried);
+            assertForwardAndReverseLink(follows, source, otherTarget, initial);
 
             relationships.removeTarget(fixture.store(), source, follows, otherTarget);
             assertNull(relationships.getFirstTarget(source, follows));
@@ -415,15 +414,8 @@ class RelationshipsTest {
                         }
                     }
                     case 1 -> {
-                        if (current == null || current.target == target) {
-                            relationships.putTarget(fixture.store(), source, follows, target, data);
-                            expected.put(source, new ExpectedLink(target, data));
-                        } else {
-                            assertThrows(
-                                IllegalStateException.class,
-                                () -> relationships.putTarget(fixture.store(), source, follows, target, data)
-                            );
-                        }
+                        relationships.putTarget(fixture.store(), source, follows, target, data);
+                        expected.put(source, new ExpectedLink(target, data));
                     }
                     case 2 -> {
                         if (current != null && current.target == target) {
@@ -464,7 +456,7 @@ class RelationshipsTest {
     private static GenericRelationshipType<Object, Object, FollowData> registerFollows(ComponentRegistry<Object> registry) {
         return new RelationshipTypeRegistry<>(registry).registerRelationship(
             FollowData.class,
-            RelationshipRules.single());
+            RelationshipTraits.defaults().exclusive());
     }
 
     private static void assertForwardAndReverseLink(
@@ -511,8 +503,7 @@ class RelationshipsTest {
         var registry = new ComponentRegistry<Object>();
         try {
             var types = new RelationshipTypeRegistry<>(registry);
-            var seatType = registry.registerComponent(Seat.class, Seat::new);
-            var mounted = types.registerRelationship(seatType, new SeatObserver(), RelationshipRules.single());
+            var mounted = types.registerRelationship(Seat.class, RelationshipTraits.defaults().exclusive());
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
             var rider = spawned(store);
             var mount = spawned(store);
@@ -575,7 +566,7 @@ class RelationshipsTest {
                 "relwind:test/follows",
                 String.class,
                 Codec.STRING,
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
             failingStorage = new FailOnSourceChange(follows, storageFailure);
             failingObserver = new FailOnSet(follows, observerFailure);
             registry.registerSystem(failingStorage);
@@ -695,11 +686,7 @@ class RelationshipsTest {
         }
     }
 
-    private static final class Seat implements Component<Object> {
-        @Override
-        public Seat clone() {
-            return new Seat();
-        }
+    private record Seat() {
     }
 
     private record FollowData(String distance) {
@@ -720,7 +707,7 @@ class RelationshipsTest {
                 }), TestStoreRuntime.inline());
 
             var source = fixture.addEntity(world);
-            var type = sources.registerRelationship(targets, RelationshipRules.single());
+            var type = sources.registerRelationship(targets, RelationshipTraits.defaults().exclusive());
             var block = fixture.addBlock(world);
 
             var failure = assertThrows(IllegalArgumentException.class,
@@ -739,7 +726,7 @@ class RelationshipsTest {
             var anchoredTo = entityTypes.registerRelationship(
                 blockTypes,
                 Anchor.class,
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
 
             var source = fixture.addEntity(world);
             var block = fixture.addBlock(world);
@@ -767,7 +754,7 @@ class RelationshipsTest {
             var anchoredTo = entityTypes.registerRelationship(
                 blockTypes,
                 Anchor.class,
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
 
             var source = fixture.addEntity(world);
             var block = fixture.addBlock(world);
@@ -813,7 +800,7 @@ class RelationshipsTest {
             var world = fixture.addWorld("overworld");
             var entityTypes = entityTypes(fixture);
             var blockTypes = blockTypes(fixture);
-            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipRules.multiple());
+            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipTraits.defaults());
 
             var first = fixture.addEntity(world);
             var second = fixture.addEntity(world);
@@ -853,7 +840,7 @@ class RelationshipsTest {
             var anchoredTo = entityTypes.registerRelationship(
                 blockTypes,
                 Anchor.class,
-                RelationshipRules.multiple());
+                RelationshipTraits.defaults());
 
             var source = fixture.addEntity(world);
             var unloading = fixture.addEntity(world);
@@ -896,7 +883,7 @@ class RelationshipsTest {
             var nether = fixture.addWorld("nether");
             var sources = entityTypes(fixture);
             var targets = blockTypes(fixture);
-            var type = sources.registerRelationship(targets, RelationshipRules.single());
+            var type = sources.registerRelationship(targets, RelationshipTraits.defaults().exclusive());
             var source = fixture.addEntity(overworld);
 
             var failure = assertThrows(IllegalArgumentException.class,
@@ -915,7 +902,7 @@ class RelationshipsTest {
             var world = fixture.addWorld("overworld");
             var entityTypes = entityTypes(fixture);
             var blockTypes = blockTypes(fixture);
-            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipRules.multiple());
+            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipTraits.defaults());
 
             var source = fixture.addEntity(world);
             var otherSource = fixture.addEntity(world);
@@ -949,9 +936,9 @@ class RelationshipsTest {
             var world = fixture.addWorld("overworld");
             var entityTypes = entityTypes(fixture);
             var blockTypes = blockTypes(fixture);
-            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipRules.multiple());
-            var follows = entityTypes.registerRelationship(RelationshipRules.multiple());
-            var touches = blockTypes.registerRelationship(RelationshipRules.multiple());
+            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipTraits.defaults());
+            var follows = entityTypes.registerRelationship(RelationshipTraits.defaults());
+            var touches = blockTypes.registerRelationship(RelationshipTraits.defaults());
 
             var source = fixture.addEntity(world);
             var otherSource = fixture.addEntity(world);
@@ -978,8 +965,5 @@ class RelationshipsTest {
             relationships.addTarget(world.blockStore(), otherBlock, touches, block);
             assertEquals(1, relationships.getTargetCount(otherSource, follows));
         }
-    }
-
-    private static final class SeatObserver extends RelationshipDataObserver<Object, Seat> {
     }
 }

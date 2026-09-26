@@ -91,7 +91,7 @@ class RelationshipAccessorTrackerTest {
             installTrackerIfRequested(trackerInstalled, types);
             var follows = types.registerRelationship(
                 "relwind:test/accessor/closed",
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
             var source = Objects.requireNonNull(store.addEntity(registry.newHolder(), AddReason.SPAWN));
 
@@ -200,7 +200,7 @@ class RelationshipAccessorTrackerTest {
     private static GenericRelationshipType<Object, Object, Void> registerType(ComponentRegistry<Object> registry, String name) {
         return new RelationshipTypeRegistry<>(registry).registerRelationship(
             "relwind:test/accessor/" + name,
-            RelationshipRules.single());
+            RelationshipTraits.defaults().exclusive());
     }
 
     private static void assertStopped(Executable call) {

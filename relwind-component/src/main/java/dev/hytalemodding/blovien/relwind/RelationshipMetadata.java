@@ -198,9 +198,8 @@ public final class RelationshipMetadata<ECS_TYPE> implements Component<ECS_TYPE>
                 var payload = payloads.get(record);
                 if (payload != null && payload.type() == type) {
                     data = payload.data();
-                } else if (type.getDescriptor().linkDataClass() == Void.class
-                    || type.getDescriptor().getDataComponentType() != null) {
-                    // a type without link data and a type whose data is a component save no payload
+                } else if (type.getDescriptor().linkDataClass() == Void.class) {
+                    // a type without link data saves no payload
                     data = null;
                 } else if (type.getCodec() == null) {
                     // without a codec this registration cannot read what the record saved

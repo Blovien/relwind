@@ -225,7 +225,7 @@ class NativeQueryDeclarationTest {
             "relwind:test/" + name,
             dataClass,
             null,
-            RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+            RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
     }
 
     private static <C extends Component<Object>> Ref<Object> add(

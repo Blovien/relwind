@@ -85,6 +85,12 @@ public final class RelationshipResult<ECS_TYPE, LINK_DATA> {
         return link == null ? null : link.target;
     }
 
+    @Nullable
+    public GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> getRelationshipType(RelationshipQuery.Binding<ECS_TYPE, ?> binding) {
+        var link = getBoundLink(binding);
+        return link == null ? null : link.type;
+    }
+
     /// Use {@link #has} to distinguish an absent binding from null data.
     @Nullable
     public <DATA> DATA getData(RelationshipQuery.Binding<ECS_TYPE, DATA> binding) {

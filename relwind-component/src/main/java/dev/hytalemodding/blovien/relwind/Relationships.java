@@ -8,7 +8,6 @@ package dev.hytalemodding.blovien.relwind;
 
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.ComponentAccessor;
-import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 
@@ -71,8 +70,7 @@ public final class Relationships implements AutoCloseable {
             type.getRelationshipTypeRegistry().getTracker(), true);
     }
 
-    /// Inserts a data-free link, or replaces the existing link's data with null.
-    /// @throws IllegalStateException if a single target source already holds another target
+    /// Stores null data and replaces the current target of an exclusive type.
     public <SOURCE, TARGET> void putTarget(
         ComponentAccessor<SOURCE> accessor,
         Ref<SOURCE> source,
@@ -84,11 +82,7 @@ public final class Relationships implements AutoCloseable {
             type.getRelationshipTypeRegistry().getTracker());
     }
 
-    /// Inserts or replaces link data and announces the change. Per-link data must be immutable:
-    /// pass a replacement value instead of editing a value returned by a read. Native data
-    /// components retain their own copy contract. Reacquire data obtained before this call.
-    /// @throws IllegalStateException if the type carries no link data, or a single target source
-    /// already holds another target
+    /// Stores immutable replacement data and replaces the current target of an exclusive type.
     public <SOURCE, TARGET, LINK_DATA> void putTarget(
         ComponentAccessor<SOURCE> accessor,
         Ref<SOURCE> source,
@@ -139,6 +133,17 @@ public final class Relationships implements AutoCloseable {
             type.getRelationshipTypeRegistry().getTracker(), true);
     }
 
+    /// Removes the source's loaded and away links of this type.
+    public <SOURCE, TARGET> void clearTargets(
+        ComponentAccessor<SOURCE> accessor,
+        Ref<SOURCE> source,
+        GenericRelationshipType<SOURCE, TARGET, ?> type
+    ) {
+        ensureOpen();
+        RelationshipCommands.clearTargets(accessor, this, type, source,
+            type.getRelationshipTypeRegistry().getTracker());
+    }
+
     private static void requireLinkData(GenericRelationshipType<?, ?, ?> type, String command) {
         if (type.getDescriptor().linkDataClass() == Void.class) {
             throw new IllegalStateException(
@@ -166,6 +171,9 @@ public final class Relationships implements AutoCloseable {
         var results = access.<LINK_DATA>borrowResults();
         try {
             store.forEachChunk(query, (chunk, commands) -> {
+                if (!query.testLoaded(chunk.getArchetype())) {
+                    return;
+                }
                 for (int index = 0; index < chunk.size(); index++) {
                     RelationshipEvaluator.evaluate(store, chunk.getReferenceTo(index), query, results);
                     for (int i = 0; i < results.size(); i++) {
@@ -256,6 +264,107 @@ public final class Relationships implements AutoCloseable {
         targetStore.assertThread();
     }
 
+    public <SOURCE, TARGET> boolean hasTarget(
+        Ref<SOURCE> source,
+        GenericRelationshipType<SOURCE, TARGET, ?> type,
+        Ref<TARGET> target
+    ) {
+        ensureOpen();
+        validateSourceRead(type, source);
+        validateTargetRead(type, target);
+        var outgoing = RelationshipStorage.getOutgoing(type,
+            component -> source.getStore().getComponent(source, component));
+        return outgoing != null && outgoing.contains(target);
+    }
+
+    /// Visits loaded outgoing links across every registered relationship type.
+    public <SOURCE> void forEachLink(Ref<SOURCE> source, LinkConsumer<SOURCE> consumer) {
+        ensureOpen();
+        var store = validateEntityRead(source);
+        Objects.requireNonNull(consumer, "consumer");
+        var types = RelationshipAccessSystem.getOutgoingTypes(store.getRegistry());
+        if (types.isEmpty()) return;
+        duringTraversal(store, () -> {
+            for (var type : types) visitOutgoing(source, type, consumer);
+        });
+    }
+
+    /// Visits loaded incoming links, including types registered in another registry.
+    public <TARGET> void forEachIncomingLink(Ref<TARGET> target, IncomingLinkConsumer<TARGET> consumer) {
+        ensureOpen();
+        var store = validateEntityRead(target);
+        Objects.requireNonNull(consumer, "consumer");
+        var types = RelationshipAccessSystem.getIncomingTypes(store.getRegistry());
+        if (types.isEmpty()) return;
+        duringTraversal(store, () -> {
+            for (var type : types) visitIncoming(target, type, consumer);
+        });
+    }
+
+    private static <SOURCE, TARGET> void visitOutgoing(
+        Ref<SOURCE> source,
+        GenericRelationshipType<SOURCE, TARGET, ?> type,
+        LinkConsumer<SOURCE> consumer
+    ) {
+        var outgoing = RelationshipStorage.getOutgoing(type,
+            component -> source.getStore().getComponent(source, component));
+        if (outgoing == null) return;
+        for (int index = 0; index < outgoing.size(); index++) {
+            var target = outgoing.getTarget(index);
+            var data = outgoing.getData(index, Object.class);
+            var targetStore = validateEntityRead(target);
+            duringTraversal(targetStore, () -> consumer.accept(type, target, data));
+        }
+    }
+
+    private static <SOURCE, TARGET> void visitIncoming(
+        Ref<TARGET> target,
+        GenericRelationshipType<SOURCE, TARGET, ?> type,
+        IncomingLinkConsumer<TARGET> consumer
+    ) {
+        var incoming = RelationshipStorage.getIncoming(type,
+            component -> target.getStore().getComponent(target, component));
+        if (incoming == null) return;
+        for (int index = 0; index < incoming.size(); index++) {
+            var source = incoming.getSource(index);
+            var sourceStore = validateEntityRead(source);
+            var outgoing = RelationshipStorage.getOutgoing(type,
+                component -> sourceStore.getComponent(source, component));
+            var data = outgoing == null ? null : outgoing.getData(target, Object.class);
+            duringTraversal(sourceStore, () -> consumer.accept(type, source, data));
+        }
+    }
+
+    private static <ECS_TYPE> Store<ECS_TYPE> validateEntityRead(Ref<ECS_TYPE> entity) {
+        var store = Objects.requireNonNull(entity, "entity").getStore();
+        if (store.isShutdown() || store.getRegistry().isShutdown()) {
+            throw new IllegalStateException("Cannot access relationships for a stopped Store");
+        }
+        entity.validate(store);
+        store.assertThread();
+        return store;
+    }
+
+    private static void duringTraversal(Store<?> store, Runnable consumer) {
+        var command = RelationshipAccessSystem.forStoreCommand(store);
+        command.beginTraversal();
+        try {
+            consumer.run();
+        } finally {
+            command.endTraversal();
+        }
+    }
+
+    @FunctionalInterface
+    public interface LinkConsumer<SOURCE> {
+        void accept(GenericRelationshipType<SOURCE, ?, ?> type, Ref<?> target, @Nullable Object data);
+    }
+
+    @FunctionalInterface
+    public interface IncomingLinkConsumer<TARGET> {
+        void accept(GenericRelationshipType<?, TARGET, ?> type, Ref<?> source, @Nullable Object data);
+    }
+
     @Nullable
     public <SOURCE, TARGET> Ref<TARGET> getFirstTarget(
         Ref<SOURCE> source,
@@ -301,7 +410,6 @@ public final class Relationships implements AutoCloseable {
     }
 
     @Nullable
-    @SuppressWarnings({"unchecked", "rawtypes"})
     public <SOURCE, TARGET, LINK_DATA> LINK_DATA getData(
         Ref<SOURCE> source,
         GenericRelationshipType<SOURCE, TARGET, LINK_DATA> type,
@@ -314,14 +422,7 @@ public final class Relationships implements AutoCloseable {
         if (outgoing == null) {
             return null;
         }
-        ComponentType dataType = type.getDescriptor().getDataComponentType();
-        if (dataType == null) {
-            return outgoing.getData(target, type.getDescriptor().linkDataClass());
-        }
-        if (!outgoing.contains(target)) {
-            return null;
-        }
-        return (LINK_DATA) source.getStore().getComponent(source, dataType);
+        return outgoing.getData(target, type.getDescriptor().linkDataClass());
     }
 
     public <SOURCE, TARGET> int getIncomingCount(Ref<TARGET> target, GenericRelationshipType<SOURCE, TARGET, ?> type) {

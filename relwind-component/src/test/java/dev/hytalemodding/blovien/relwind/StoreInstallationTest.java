@@ -68,7 +68,7 @@ class StoreInstallationTest {
 
             var type = installation.getRelationshipTypeRegistry().registerRelationship(
                 "test:registered-first",
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
 
             assertNotNull(type);
 
@@ -146,7 +146,7 @@ class StoreInstallationTest {
         var installation = new StoreInstallation<>(fixture.registry, fixture.identity(),
             TestStoreRuntime.<Object>marking((store, ref) -> marks.add(ref), holder -> { }));
         if (withPersistence) installation.installPersistence();
-        var type = installation.getRelationshipTypeRegistry().registerRelationship("test:saving-marks", RelationshipRules.single());
+        var type = installation.getRelationshipTypeRegistry().registerRelationship("test:saving-marks", RelationshipTraits.defaults().exclusive());
         var id = UUID.randomUUID();
         var source = fixture.add(id);
         installation.getTracker().onEntityLoaded(id, source);
@@ -178,7 +178,7 @@ class StoreInstallationTest {
             var persistence = installation.installPersistence();
             var type = installation.getRelationshipTypeRegistry().registerRelationship(
                 "test:installation-close",
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
             var id = UUID.randomUUID();
             var source = fixture.add(id);
             var target = fixture.add(UUID.randomUUID());
@@ -208,7 +208,7 @@ class StoreInstallationTest {
             var persistence = installation.installPersistence();
             var type = installation.getRelationshipTypeRegistry().registerRelationship(
                 "test:close-order",
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
             runtime.observe(persistence.getComponentType(), type.getSourceType());
 
             installation.close();

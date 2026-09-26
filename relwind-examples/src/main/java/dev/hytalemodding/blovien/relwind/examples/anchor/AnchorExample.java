@@ -14,7 +14,7 @@ import com.hypixel.hytale.server.core.universe.world.chunk.section.ChunkSection;
 import com.hypixel.hytale.server.core.universe.world.storage.ChunkStore;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hytalemodding.blovien.relwind.GenericRelationshipType;
-import dev.hytalemodding.blovien.relwind.RelationshipRules;
+import dev.hytalemodding.blovien.relwind.RelationshipTraits;
 import dev.hytalemodding.blovien.relwind.plugin.Relwind;
 import org.joml.Vector3d;
 
@@ -29,8 +29,8 @@ public final class AnchorExample {
 
     /// `retainOnTransfer` lets the anchor follow a player between worlds, and `retainOnDeactivation`
     /// keeps it while the player is logged out or the section holding the block entity is unloaded.
-    public static final RelationshipRules RULES =
-        RelationshipRules.single().retainOnTransfer().retainOnDeactivation();
+    public static final RelationshipTraits TRAITS =
+        RelationshipTraits.defaults().exclusive().retainOnTransfer().retainOnDeactivation();
 
     private final GenericRelationshipType<EntityStore, ChunkStore, Void> anchoredTo;
 

@@ -58,8 +58,7 @@ public final class TestStoreRuntime<ECS_TYPE> implements StoreRuntime<ECS_TYPE> 
         return new TestStoreRuntime<>(execute, sourceChanged, holderChanged, true);
     }
 
-    /// A copy of this runtime whose Store kind never deletes a linked entity, as a chunk store does
-    /// not, so a relationship type declaring `cascadeSource()` on it is rejected.
+    /// Rejects `onDeleteTarget(DELETE)` for a Store kind that never deletes a linked entity.
     @Nonnull
     public TestStoreRuntime<ECS_TYPE> withoutDeletion() {
         return new TestStoreRuntime<>(execute, sourceChanged, holderChanged, false);

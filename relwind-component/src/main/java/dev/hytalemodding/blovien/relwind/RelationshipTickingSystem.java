@@ -36,6 +36,12 @@ public abstract class RelationshipTickingSystem<ECS_TYPE, LINK_DATA> extends Ent
     protected void onRelationshipSystemUnregistered() {
     }
 
+    /// The inherited test keeps Hytale's implicit NonTicking exclusion.
+    @Override
+    public final boolean test(ComponentRegistry<ECS_TYPE> componentRegistry, Archetype<ECS_TYPE> archetype) {
+        return lifecycle.query().testLoaded(archetype) && super.test(componentRegistry, archetype);
+    }
+
     @Override
     public final void tick(
         float seconds,

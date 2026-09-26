@@ -9,7 +9,6 @@ package dev.hytalemodding.blovien.relwind;
 import com.hypixel.hytale.component.AddReason;
 import com.hypixel.hytale.component.Archetype;
 import com.hypixel.hytale.component.CommandBuffer;
-import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Holder;
 import com.hypixel.hytale.component.Ref;
@@ -149,16 +148,15 @@ class RelationshipHolderEventSystemTest {
     }
 
     @Test
-    void aHolderEventReadsTheDataComponentFromTheHolderThatCarriesTheOutgoingLink() {
+    void aHolderEventReadsTheLinkDataFromTheHolderThatCarriesTheOutgoingLink() {
         try (var fixture = new StoreFixture()) {
-            var saddleType = fixture.registry().registerComponent(Saddle.class, Saddle::new);
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var mounted = types.registerRelationship(saddleType, new SaddleObserver(), RelationshipRules.single());
+            var mounted = types.registerRelationship(Saddle.class, RelationshipTraits.defaults().exclusive());
             var system = new MountedHolderEventSystem(fixture.positionType(), fixture.playerType(), mounted);
             fixture.registry().registerSystem(system);
             var rider = fixture.addEntity(new Position(1, 2), null);
             var mount = fixture.addEntity(new Position(3, 4), new Player("mount"));
-            var saddle = new Saddle();
+            var saddle = new Saddle(1);
             relationships.addTarget(fixture.store(), rider, mounted, mount, saddle);
             var holder = fixture.store().removeEntity(rider, RemoveReason.UNLOAD);
 
@@ -240,7 +238,7 @@ class RelationshipHolderEventSystemTest {
     private static GenericRelationshipType<Object, Object, Void> register(RelationshipTypeRegistry<Object> types, String id) {
         return types.registerRelationship(
             id,
-            RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+            RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
     }
 
     public static final class RecordingHolderEventSystem
@@ -460,21 +458,9 @@ class RelationshipHolderEventSystemTest {
     private static final class CallbackFailure extends RuntimeException {
     }
 
-    /// Link data of a single target type, carried by a component on the source.
-    public static final class Saddle implements Component<Object> {
-        private int seat;
-
-        @Override
-        public Saddle clone() {
-            var copy = new Saddle();
-            copy.seat = seat;
-            return copy;
-        }
+    public record Saddle(int seat) {
     }
 
     private record Match(Ref<Object> target, Ref<Object> weapon) {
-    }
-
-    private static final class SaddleObserver extends RelationshipDataObserver<Object, Saddle> {
     }
 }

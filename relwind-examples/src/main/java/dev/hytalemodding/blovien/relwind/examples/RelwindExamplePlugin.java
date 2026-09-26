@@ -9,7 +9,7 @@ import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 import com.hypixel.hytale.server.core.universe.world.storage.ChunkStore;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-import dev.hytalemodding.blovien.relwind.RelationshipRules;
+import dev.hytalemodding.blovien.relwind.RelationshipTraits;
 import dev.hytalemodding.blovien.relwind.RelationshipType;
 import dev.hytalemodding.blovien.relwind.RelationshipTypeRegistry;
 import dev.hytalemodding.blovien.relwind.examples.alliance.AllianceAlertSystem;
@@ -95,17 +95,16 @@ public final class RelwindExamplePlugin extends JavaPlugin {
         ownedBy = entityRelationshipRegistry.registerRelationship(
                 // `Void` relationship types can be serialized by giving them a persistent name
                 OwnershipExample.OWNED_BY,
-                // NOTE: there are various RelationshipRules that you can explore, for convention you could create a common
-                // static RULES field for sharing rules to other common relationships
-                OwnershipExample.RULES
+                // A shared TRAITS constant can configure several relationship types.
+                OwnershipExample.TRAITS
         );
         var ownership = new OwnershipExample(ownedBy);
 
-        var alliedWith = entityRelationshipRegistry.registerRelationship(AllianceExample.RULES);
+        var alliedWith = entityRelationshipRegistry.registerRelationship(AllianceExample.TRAITS);
         var alliance = new AllianceExample(alliedWith);
         getEntityStoreRegistry().registerSystem(new AllianceAlertSystem(alliance));
 
-        POWERS = chunkRelationshipRegistry.registerRelationship(Signal.class, RelationshipRules.multiple());
+        POWERS = chunkRelationshipRegistry.registerRelationship(Signal.class, RelationshipTraits.defaults());
         var circuit = new CircuitExample();
         getChunkStoreRegistry().registerSystem(new PowerTickingSystem());
         getEntityStoreRegistry().registerSystem(new WireToolSystem(circuit));
@@ -116,7 +115,7 @@ public final class RelwindExamplePlugin extends JavaPlugin {
             // store here (or a custom store if needed), you defined a relationship between two entities in different stores
             // NOTE: for the peculiar case of `ChunkStore` this is mostly for EntityStore entity to ChunkStore BlockEntity
             chunkRelationshipRegistry,
-            AnchorExample.RULES
+            AnchorExample.TRAITS
         );
         var anchor = new AnchorExample(anchoredTo);
 

@@ -7,15 +7,14 @@
 package dev.hytalemodding.blovien.relwind;
 
 import com.hypixel.hytale.component.CommandBuffer;
-import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.StoreFixture;
 import com.hypixel.hytale.component.StoreFixture.Position;
 import com.hypixel.hytale.component.dependency.Dependency;
 import com.hypixel.hytale.component.dependency.Order;
 import com.hypixel.hytale.component.dependency.SystemDependency;
-import com.hypixel.hytale.component.ComponentType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -32,11 +31,38 @@ class RelationshipChangeSystemTest {
     private static final Relationships relationships = new Relationships();
 
     @Test
+    void dispatchKeepsTheOldTargetIdentityAfterItsReferenceBecomesUnavailable() {
+        try (var fixture = new StoreFixture()) {
+            var type = new RelationshipTypeRegistry<>(fixture.registry()).registerRelationship(RelationshipTraits.defaults());
+            var source = fixture.addEntity(new Position(1, 1), null);
+            var target = fixture.addEntity(new Position(2, 2), null);
+            var oldTarget = fixture.addEntity(new Position(3, 3), null);
+            var previousTargets = new ArrayList<RelationshipChangeSystem.LinkedEntity<Object>>();
+            fixture.registry().registerSystem(new RelationshipChangeSystem<Object, Void>(type) {
+                @Override
+                protected void onRelationshipRetargeted(LinkedEntity<Object> from, LinkedEntity<Object> previous,
+                    LinkedEntity<Object> to, Void data, Store<Object> store, CommandBuffer<Object> commands) {
+                    previousTargets.add(previous);
+                }
+            });
+            var event = new RelationshipChangeSystem.ChangeEvent<>(type, RelationshipChangeSystem.Kind.RETARGETED,
+                new RelationshipChangeSystem.LinkedEntity<>(source, "source"),
+                new RelationshipChangeSystem.LinkedEntity<>(target, "target"),
+                new RelationshipChangeSystem.LinkedEntity<>(oldTarget, "old target"), null, null);
+            fixture.store().removeEntity(oldTarget, RemoveReason.UNLOAD);
+
+            RelationshipChangeSystem.dispatch(fixture.store(), event);
+
+            assertEquals(List.of(new RelationshipChangeSystem.LinkedEntity<>(null, "old target")), previousTargets);
+        }
+    }
+
+    @Test
     void unregisteringOneTypeKeepsTheSharedEventUntilItsLastObserverIsRemoved() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var first = types.registerRelationship(StringBuilder.class, RelationshipRules.single());
-            var second = types.registerRelationship(StringBuilder.class, RelationshipRules.single());
+            var first = types.registerRelationship(StringBuilder.class, RelationshipTraits.defaults().exclusive());
+            var second = types.registerRelationship(StringBuilder.class, RelationshipTraits.defaults().exclusive());
             var firstObserver = new RelationshipChangeSystem<Object, StringBuilder>(first) { };
             var secondObserver = new RecordingObserver(second);
             fixture.registry().registerSystem(firstObserver);
@@ -62,8 +88,8 @@ class RelationshipChangeSystemTest {
     }
 
     @ParameterizedTest
-    @EnumSource(RelationshipRules.SourceRetention.class)
-    void mutationsEmitOnlyTheirLogicalEffects(RelationshipRules.SourceRetention retention) {
+    @EnumSource(RelationshipTraits.SourceRetention.class)
+    void mutationsEmitOnlyTheirLogicalEffects(RelationshipTraits.SourceRetention retention) {
         try (var fixture = new StoreFixture()) {
             var type = new RelationshipTypeRegistry<>(fixture.registry())
                 .registerRelationship(StringBuilder.class, multipleWith(retention));
@@ -102,9 +128,9 @@ class RelationshipChangeSystemTest {
         }
     }
 
-    private static RelationshipRules multipleWith(RelationshipRules.SourceRetention retention) {
-        var rules = RelationshipRules.multiple();
-        return retention == RelationshipRules.SourceRetention.RETAIN ? rules.retainSourceStorage() : rules;
+    private static RelationshipTraits multipleWith(RelationshipTraits.SourceRetention retention) {
+        var traits = RelationshipTraits.defaults();
+        return retention == RelationshipTraits.SourceRetention.RETAIN ? traits.retainSourceStorage() : traits;
     }
 
     @Test
@@ -112,7 +138,7 @@ class RelationshipChangeSystemTest {
         try (var fixture = new StoreFixture()) {
             var type = new RelationshipTypeRegistry<>(fixture.registry()).registerRelationship(
                 StringBuilder.class,
-                RelationshipRules.single());
+                RelationshipTraits.defaults().exclusive());
             var source = fixture.addEntity(new Position(1, 2), null);
             var target = fixture.addEntity(new Position(3, 4), null);
             var original = new StringBuilder("original");
@@ -152,7 +178,7 @@ class RelationshipChangeSystemTest {
     void additionObservesBothDirectionsWithLiveData() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var type = types.registerRelationship(StringBuilder.class, RelationshipRules.multiple());
+            var type = types.registerRelationship(StringBuilder.class, RelationshipTraits.defaults());
             var source = fixture.addEntity(new Position(1, 2), null);
             var target = fixture.addEntity(new Position(3, 4), null);
             var data = new StringBuilder("initial");
@@ -184,31 +210,6 @@ class RelationshipChangeSystemTest {
             relationships.addTarget(fixture.store(), source, type, target, data);
 
             assertEquals(List.of("added"), deliveries);
-        }
-    }
-
-    @Test
-    void dataComponentSetsAndRetargetsCarryTheInstanceTheSourceAlreadyHolds() {
-        try (var fixture = new StoreFixture()) {
-            var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var seatType = fixture.registry().registerComponent(Seat.class, Seat::new);
-            var mounted = types.registerRelationship(seatType, new SeatDataObserver(), RelationshipRules.single());
-            var observer = new SeatObserver(mounted, seatType);
-            fixture.registry().registerSystem(observer);
-            var rider = fixture.addEntity(new Position(1, 2), null);
-            var mount = fixture.addEntity(new Position(3, 4), null);
-            var spareMount = fixture.addEntity(new Position(5, 6), null);
-            var saddle = new Seat();
-            var replacement = new Seat();
-
-            relationships.addTarget(fixture.store(), rider, mounted, mount, saddle);
-            relationships.putTarget(fixture.store(), rider, mounted, mount, replacement);
-            relationships.retarget(fixture.store(), rider, mounted, mount, spareMount);
-            fixture.store().replaceComponent(rider, seatType, saddle);
-
-            assertEquals(List.of("added", "set", "retargeted", "set"), observer.kinds);
-            assertEquals(List.of(saddle, replacement, replacement, saddle), observer.data);
-            assertEquals(List.of(saddle, replacement), observer.oldData);
         }
     }
 
@@ -280,72 +281,5 @@ class RelationshipChangeSystemTest {
             assertEquals(1, relationships.getTargetCount(source, getRelationshipType()));
             assertEquals(1, relationships.getIncomingCount(target, getRelationshipType()));
         }
-    }
-    private static final class Seat implements Component<Object> {
-        @Override
-        public Seat clone() {
-            return new Seat();
-        }
-    }
-
-    /// Checks that the source already carries the delivered link data when the observer runs.
-    private static final class SeatObserver extends RelationshipChangeSystem<Object, Seat> {
-        private final ComponentType<Object, Seat> seatType;
-        private final List<String> kinds = new ArrayList<>();
-        private final List<Seat> data = new ArrayList<>();
-        private final List<Seat> oldData = new ArrayList<>();
-
-        private SeatObserver(
-            RelationshipType<Object, Seat> type,
-            ComponentType<Object, Seat> seatType
-        ) {
-            super(type);
-            this.seatType = seatType;
-        }
-
-        @Override
-        protected void onRelationshipAdded(
-            LinkedEntity<Object> source,
-            LinkedEntity<Object> target,
-            Seat seat,
-            Store<Object> store,
-            CommandBuffer<Object> buffer
-        ) {
-            record("added", store, source.reference(), seat);
-        }
-
-        @Override
-        protected void onRelationshipSet(
-            LinkedEntity<Object> source,
-            LinkedEntity<Object> target,
-            Seat previous,
-            Seat seat,
-            Store<Object> store,
-            CommandBuffer<Object> buffer
-        ) {
-            oldData.add(previous);
-            record("set", store, source.reference(), seat);
-        }
-
-        @Override
-        protected void onRelationshipRetargeted(
-            LinkedEntity<Object> source,
-            LinkedEntity<Object> oldTarget,
-            LinkedEntity<Object> target,
-            Seat seat,
-            Store<Object> store,
-            CommandBuffer<Object> buffer
-        ) {
-            record("retargeted", store, source.reference(), seat);
-        }
-
-        private void record(String kind, Store<Object> store, Ref<Object> source, Seat seat) {
-            assertSame(seat, store.getComponent(source, seatType));
-            kinds.add(kind);
-            data.add(seat);
-        }
-    }
-
-    private static final class SeatDataObserver extends RelationshipDataObserver<Object, Seat> {
     }
 }

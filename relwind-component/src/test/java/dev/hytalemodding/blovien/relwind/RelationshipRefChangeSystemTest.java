@@ -7,15 +7,11 @@
 package dev.hytalemodding.blovien.relwind;
 
 
-import com.hypixel.hytale.codec.Codec;
-import com.hypixel.hytale.codec.KeyedCodec;
-import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.component.AddReason;
 import com.hypixel.hytale.component.Archetype;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentType;
-import com.hypixel.hytale.component.ComponentRegistry;
 import com.hypixel.hytale.component.EmptyResourceStorage;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
@@ -23,25 +19,19 @@ import com.hypixel.hytale.component.StoreFixture;
 import com.hypixel.hytale.component.query.Query;
 import org.checkerframework.checker.nullness.compatqual.NonNullDecl;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 
 import java.util.ArrayList;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// A change to a component the query watches is delivered with the relationship results matching
-/// at that moment, including a change to a link data component.
+/// at that moment.
 class RelationshipRefChangeSystemTest {
     private static final Relationships relationships = new Relationships();
 
@@ -237,161 +227,13 @@ class RelationshipRefChangeSystemTest {
     }
 
     private static GenericRelationshipType<Object, Object, Void> register(RelationshipTypeRegistry<Object> types) {
-        return types.registerRelationship(RelationshipRules.multiple());
+        return types.registerRelationship(RelationshipTraits.defaults());
     }
 
     private record Delivery(String phase, Integer oldValue, Integer newValue, Ref<Object> target) {
     }
 
     private record MarkerDelivery(String phase, Ref<Object> target) {
-    }
-
-
-    @ParameterizedTest
-    @EnumSource(DataWrite.class)
-    void everyDataComponentWriteIsTheLogicalSetAndMarksPersistence(DataWrite entry) {
-        try (var fixture = new MountFixture()) {
-            var rider = fixture.add();
-            var mount = fixture.add();
-            var initial = fixture.mountData(1);
-            relationships.addTarget(fixture.store, rider, fixture.type, mount, initial);
-            fixture.observer.sets.clear();
-            int marks = fixture.persistenceMarks;
-
-            var written = fixture.mountData(2);
-            write(entry, fixture, rider, mount, written);
-
-            assertEquals(1, fixture.observer.sets.size());
-            assertSame(rider, fixture.observer.sets.get(0).source());
-            assertSame(mount, fixture.observer.sets.get(0).target());
-            assertSame(initial, fixture.observer.sets.get(0).oldData());
-            assertSame(written, fixture.observer.sets.get(0).data());
-            assertEquals(marks + 1, fixture.persistenceMarks);
-        }
-    }
-
-    private enum DataWrite {
-        REPLACE_COMPONENT,
-        PUT_COMPONENT,
-        PUT_TARGET
-    }
-
-    private static void write(DataWrite entry, MountFixture fixture, Ref<Object> rider, Ref<Object> mount, MountData data) {
-        if (entry == DataWrite.REPLACE_COMPONENT) {
-            fixture.store.replaceComponent(rider, fixture.dataType, data);
-        } else if (entry == DataWrite.PUT_COMPONENT) {
-            fixture.store.putComponent(rider, fixture.dataType, data);
-        } else {
-            relationships.putTarget(fixture.store, rider, fixture.type, mount, data);
-        }
-    }
-
-    @Test
-    void attachingTheDataComponentToALinkWithoutDataIsTheLogicalSet() {
-        try (var fixture = new MountFixture()) {
-            var bareRider = fixture.add();
-            var mount = fixture.add();
-            relationships.addTarget(fixture.store, bareRider, fixture.type, mount);
-            fixture.observer.sets.clear();
-
-            var attached = fixture.mountData(4);
-            fixture.store.putComponent(bareRider, fixture.dataType, attached);
-
-            assertEquals(1, fixture.observer.sets.size());
-            assertSame(bareRider, fixture.observer.sets.get(0).source());
-            assertNull(fixture.observer.sets.get(0).oldData());
-            assertSame(attached, fixture.observer.sets.get(0).data());
-            assertSame(attached, relationships.getData(bareRider, fixture.type, mount));
-        }
-    }
-
-    @Test
-    void aNativeDataComponentRemovalIsRejectedOnlyWhileTheLinkExists() {
-        try (var fixture = new MountFixture()) {
-            var rider = fixture.add();
-            var mount = fixture.add();
-            var unlinked = fixture.add();
-            relationships.addTarget(fixture.store, rider, fixture.type, mount, fixture.mountData(1));
-            fixture.store.addComponent(unlinked, fixture.dataType, fixture.mountData(2));
-
-            var rejected = assertThrows(IllegalStateException.class,
-                () -> fixture.store.removeComponent(rider, fixture.dataType));
-            assertTrue(rejected.getMessage().contains("relwind:test/mounted"));
-
-            fixture.store.removeComponent(unlinked, fixture.dataType);
-            assertNull(fixture.store.getComponent(unlinked, fixture.dataType));
-        }
-    }
-
-    @Test
-    void unregisteringTheTypeUnregistersTheObserverOfItsDataComponent() {
-        try (var fixture = new MountFixture()) {
-            var spare = fixture.registry.registerComponent(MountData.class, "RelwindTestSpare", MountData.CODEC);
-            var spareType = registerSpare(fixture.installation.types(), spare);
-            // an anonymous subclass, because the fixture already registered this recorder class
-            MountSetRecorder spareObserver = new MountSetRecorder(spareType) { };
-            fixture.registry.registerSystem(spareObserver);
-            var rider = fixture.add();
-            var mount = fixture.add();
-            relationships.addTarget(fixture.store, rider, spareType, mount, fixture.mountData(1));
-
-            fixture.store.replaceComponent(rider, spare, fixture.mountData(2));
-            assertEquals(1, spareObserver.sets.size());
-
-            fixture.installation.types().unregisterRelationship(spareType);
-
-            // Relwind has no observer left for that component
-            int marks = fixture.persistenceMarks;
-            fixture.store.replaceComponent(rider, spare, fixture.mountData(3));
-            assertEquals(1, spareObserver.sets.size());
-            assertEquals(marks, fixture.persistenceMarks);
-            fixture.store.removeComponent(rider, spare);
-
-            var reused = registerSpare(fixture.installation.types(), spare);
-
-            relationships.addTarget(fixture.store, rider, fixture.type, mount, fixture.mountData(4));
-            fixture.observer.sets.clear();
-            fixture.store.replaceComponent(rider, fixture.dataType, fixture.mountData(5));
-            assertEquals(1, fixture.observer.sets.size());
-            fixture.installation.types().unregisterRelationship(reused);
-        }
-    }
-
-    private static RelationshipType<Object, MountData> registerSpare(
-        RelationshipTypeRegistry<Object> types,
-        ComponentType<Object, MountData> spare
-    ) {
-        return types.registerRelationship("relwind:test/spare", spare, new SpareObserver(), RelationshipRules.single());
-    }
-
-    @Test
-    void aSecondTypeRegisteredWithTheSameObserverClassIsRefused() {
-        try (var fixture = new MountFixture()) {
-            var spare = fixture.registry.registerComponent(MountData.class, "RelwindTestSpare", MountData.CODEC);
-
-            assertThrows(IllegalArgumentException.class,
-                () -> fixture.installation.types().registerRelationship(
-                    spare,
-                    new MountObserver(),
-                    RelationshipRules.single()));
-        }
-    }
-
-    @Test
-    void aSecondTypeOnTheSameDataComponentIsRefusedWithAnotherObserverClass() {
-        try (var fixture = new MountFixture()) {
-            var types = fixture.installation.types();
-
-            // a data component type belongs to one relationship type, whatever class observes it
-            var shared = assertThrows(IllegalArgumentException.class,
-                () -> types.registerRelationship(
-                    "relwind:test/second-mount",
-                    fixture.dataType,
-                    new RivalMountObserver(),
-                    RelationshipRules.single()));
-
-            assertTrue(shared.getMessage().contains("relwind:test/mounted"), shared.getMessage());
-        }
     }
 
     private static final class RecordingChangeSystem
@@ -716,103 +558,6 @@ class RelationshipRefChangeSystemTest {
             Store<Object> store,
             CommandBuffer<Object> commandBuffer
         ) {
-        }
-    }
-
-    static final class MountData implements Component<Object> {
-        static final BuilderCodec<MountData> CODEC = BuilderCodec.builder(MountData.class, MountData::new)
-            .append(new KeyedCodec<>("Seat", Codec.INTEGER), (data, seat) -> data.seat = seat, data -> data.seat)
-            .add()
-            .build();
-
-        int seat;
-
-        @Override
-        public MountData clone() {
-            var copy = new MountData();
-            copy.seat = seat;
-            return copy;
-        }
-    }
-
-    private static final class MountObserver extends RelationshipDataObserver<Object, MountData> {
-    }
-
-    private static final class SpareObserver extends RelationshipDataObserver<Object, MountData> {
-    }
-
-    /// A second observer class for the same data component is refused.
-    private static final class RivalMountObserver extends RelationshipDataObserver<Object, MountData> {
-    }
-
-    private record MountSet(Ref<Object> source, Ref<Object> target, MountData oldData, MountData data) {
-    }
-
-    private static class MountSetRecorder extends RelationshipChangeSystem<Object, MountData> {
-        private final List<MountSet> sets = new ArrayList<>();
-
-        private MountSetRecorder(RelationshipType<Object, MountData> type) {
-            super(type);
-        }
-
-        @Override
-        protected void onRelationshipSet(
-            LinkedEntity<Object> source,
-            LinkedEntity<Object> target,
-            MountData oldData,
-            MountData data,
-            Store<Object> store,
-            CommandBuffer<Object> commandBuffer
-        ) {
-            sets.add(new MountSet(source.reference(), target.reference(), oldData, data));
-        }
-    }
-
-    /// A single target type whose link data lives in a component on the source.
-    private static final class MountFixture implements AutoCloseable {
-        private final ComponentRegistry<Object> registry = new ComponentRegistry<>();
-        private final IdentityHashMap<Ref<Object>, UUID> identities = new IdentityHashMap<>();
-        private final RelationshipInstallation<UUID> installation;
-        private final ComponentType<Object, MountData> dataType;
-        private final RelationshipType<Object, MountData> type;
-        private final MountSetRecorder observer;
-        private final Store<Object> store;
-        private int persistenceMarks;
-
-        private MountFixture() {
-            installation = RelationshipInstallation.on(registry, identities::get, Codec.UUID_BINARY)
-                .persistence((ignoredStore, ignoredSource) -> persistenceMarks++,
-                    ignoredHolder -> { }, ignoredId -> false)
-                .install();
-            dataType = registry.registerComponent(MountData.class, "RelwindTestMount", MountData.CODEC);
-            type = installation.types().registerRelationship(
-                "relwind:test/mounted",
-                dataType,
-                new MountObserver(),
-                RelationshipRules.single());
-            observer = new MountSetRecorder(type);
-            registry.registerSystem(observer);
-            store = registry.addStore(new Object(), EmptyResourceStorage.get());
-        }
-
-        private Ref<Object> add() {
-            var ref = Objects.requireNonNull(store.addEntity(Archetype.empty(), AddReason.SPAWN));
-            var id = UUID.randomUUID();
-            identities.put(ref, id);
-            installation.tracker().onEntityLoaded(id, ref);
-            return ref;
-        }
-
-        private MountData mountData(int seat) {
-            var data = new MountData();
-            data.seat = seat;
-            return data;
-        }
-
-        @Override
-        public void close() {
-            installation.tracker().close();
-            registry.shutdown();
         }
     }
 

@@ -45,7 +45,7 @@ public class GenericRelationshipType<SOURCE, TARGET, LINK_DATA> {
         this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
         this.sourceType = Objects.requireNonNull(sourceType, "sourceType");
         this.incomingType = Objects.requireNonNull(incomingType, "incomingType");
-        this.codec = this.descriptor.getDataComponentType() == null ? codec : null;
+        this.codec = codec;
     }
 
     @Nonnull

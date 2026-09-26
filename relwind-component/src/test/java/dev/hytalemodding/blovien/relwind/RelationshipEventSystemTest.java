@@ -39,12 +39,12 @@ class RelationshipEventSystemTest {
             var follows = RelationshipEventSystemTest.<Void>register(
                 types,
                 "relwind:test/follows",
-                RelationshipRules.Cardinality.SINGLE_TARGET
+                true
             );
             var owns = RelationshipEventSystemTest.<Void>register(
                 types,
                 "relwind:test/owns",
-                RelationshipRules.Cardinality.MULTIPLE_TARGETS
+                false
             );
             var weapon = RelationshipQuery.enumerate(owns, weaponType);
             var system = new RecordingEventSystem(
@@ -88,7 +88,7 @@ class RelationshipEventSystemTest {
             var follows = RelationshipEventSystemTest.<Void>register(
                 types,
                 "relwind:test/follows",
-                RelationshipRules.Cardinality.SINGLE_TARGET
+                true
             );
             var system = new RecordingEventSystem(
                 Archetype.of(fixture.positionType()),
@@ -112,7 +112,7 @@ class RelationshipEventSystemTest {
             var follows = RelationshipEventSystemTest.<Void>register(
                 types,
                 "relwind:test/follows",
-                RelationshipRules.Cardinality.SINGLE_TARGET
+                true
             );
             var system = new RecordingEventSystem(
                 Archetype.of(fixture.positionType()),
@@ -140,7 +140,7 @@ class RelationshipEventSystemTest {
             var weaponType = fixture.registry().registerComponent(Weapon.class, Weapon::new);
             var types = new RelationshipTypeRegistry<>(fixture.registry());
             var follows = RelationshipEventSystemTest.<Void>register(
-                types, "relwind:test/zero", RelationshipRules.Cardinality.SINGLE_TARGET);
+                types, "relwind:test/zero", true);
             var system = new RecordingEventSystem(
                 Archetype.of(fixture.positionType()), follows, RelationshipQuery.and(weaponType), null);
             fixture.registry().registerSystem(system);
@@ -160,9 +160,9 @@ class RelationshipEventSystemTest {
     private static RelationshipType<Object, Void> register(
         RelationshipTypeRegistry<Object> types,
         String id,
-        RelationshipRules.Cardinality cardinality
+        boolean exclusive
     ) {
-        return types.registerRelationship(id, cardinality(cardinality));
+        return types.registerRelationship(id, traits(exclusive));
     }
 
     public static final class RecordingEventSystem
@@ -217,8 +217,8 @@ class RelationshipEventSystemTest {
     public static final class TestEvent extends CancellableEcsEvent {
     }
 
-    private static RelationshipRules cardinality(RelationshipRules.Cardinality cardinality) {
-        return cardinality == RelationshipRules.Cardinality.MULTIPLE_TARGETS
-            ? RelationshipRules.multiple() : RelationshipRules.single();
+    private static RelationshipTraits traits(boolean exclusive) {
+        return exclusive
+            ? RelationshipTraits.defaults().exclusive() : RelationshipTraits.defaults();
     }
 }

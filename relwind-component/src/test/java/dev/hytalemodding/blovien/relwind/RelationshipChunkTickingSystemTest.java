@@ -56,12 +56,12 @@ class RelationshipChunkTickingSystemTest {
             var follows = register(
                 types,
                 "relwind:test/chunk-follows",
-                RelationshipRules.Cardinality.MULTIPLE_TARGETS
+                false
             );
             var owns = register(
                 types,
                 "relwind:test/chunk-owns",
-                RelationshipRules.Cardinality.MULTIPLE_TARGETS
+                false
             );
             var owned = RelationshipQuery.enumerate(owns, eligibleType);
             var system = new RecordingChunkSystem(
@@ -134,7 +134,7 @@ class RelationshipChunkTickingSystemTest {
             var follows = register(
                 new RelationshipTypeRegistry<>(fixture.registry()),
                 "relwind:test/chunk-ordering",
-                RelationshipRules.Cardinality.SINGLE_TARGET
+                true
             );
             var sequence = new ArrayList<String>();
             var adapter = new MutatingChunkSystem(follows, sequence);
@@ -160,7 +160,7 @@ class RelationshipChunkTickingSystemTest {
             var follows = register(
                 new RelationshipTypeRegistry<>(registry),
                 "relwind:test/chunk-borrowing",
-                RelationshipRules.Cardinality.SINGLE_TARGET
+                true
             );
             var system = new NestedChunkSystem(positionType, follows);
             registry.registerSystem(system);
@@ -195,7 +195,7 @@ class RelationshipChunkTickingSystemTest {
             var follows = register(
                 new RelationshipTypeRegistry<>(registry),
                 "relwind:test/chunk-borrowing-failure",
-                RelationshipRules.Cardinality.SINGLE_TARGET
+                true
             );
             var system = new NestedChunkSystem(positionType, follows);
             registry.registerSystem(system);
@@ -230,7 +230,7 @@ class RelationshipChunkTickingSystemTest {
             var follows = register(
                 types,
                 "relwind:test/chunk-unregistration",
-                RelationshipRules.Cardinality.SINGLE_TARGET
+                true
             );
             var system = new LifecycleChunkSystem(follows);
 
@@ -249,9 +249,9 @@ class RelationshipChunkTickingSystemTest {
     private static GenericRelationshipType<Object, Object, Payload> register(
         RelationshipTypeRegistry<Object> types,
         String id,
-        RelationshipRules.Cardinality cardinality
+        boolean exclusive
     ) {
-        return types.registerRelationship(id, Payload.class, null, cardinality(cardinality));
+        return types.registerRelationship(id, Payload.class, null, traits(exclusive));
     }
 
     private static Ref<Object> addEntity(Store<Object> store, Archetype<Object> archetype) {
@@ -521,8 +521,8 @@ class RelationshipChunkTickingSystemTest {
     private static final class CallbackFailure extends RuntimeException {
     }
 
-    private static RelationshipRules cardinality(RelationshipRules.Cardinality cardinality) {
-        return cardinality == RelationshipRules.Cardinality.MULTIPLE_TARGETS
-            ? RelationshipRules.multiple() : RelationshipRules.single();
+    private static RelationshipTraits traits(boolean exclusive) {
+        return exclusive
+            ? RelationshipTraits.defaults().exclusive() : RelationshipTraits.defaults();
     }
 }

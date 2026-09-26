@@ -9,20 +9,19 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hytalemodding.blovien.relwind.RelationshipQuery;
-import dev.hytalemodding.blovien.relwind.RelationshipRules;
+import dev.hytalemodding.blovien.relwind.RelationshipTraits;
 import dev.hytalemodding.blovien.relwind.RelationshipType;
 import dev.hytalemodding.blovien.relwind.plugin.Relwind;
 
 import java.util.ArrayList;
 import java.util.List;
 
-/// Alliances between entities. One recursive walk reads the allies of an ally. An alliance is
-/// symmetric and stored as two links, and one direction reaches the whole group. Uses
-/// `addTarget`, `removeTarget`, `forEachTarget`, `hasUnresolvedTargets` and reachable queries through Relationships.
+/// Alliances between entities use symmetric links. One recursive walk reads the allies of an ally.
+/// One outgoing walk reaches the whole group.
 public final class AllianceExample {
     /// The type is registered without an id, which makes it a runtime type: an alliance between
     /// entities that are in the world together is not worth saving.
-    public static final RelationshipRules RULES = RelationshipRules.multiple();
+    public static final RelationshipTraits TRAITS = RelationshipTraits.defaults().symmetric();
 
     /// Two hops is an ally and an ally of that ally.
     public static final int ALERT_HOPS = 2;
@@ -47,18 +46,16 @@ public final class AllianceExample {
         }
         var relationship = Relwind.get().getRelationships();
         relationship.addTarget(store, entity, alliedWith, other);
-        relationship.addTarget(store, other, alliedWith, entity);
         return true;
     }
 
-    /// Removes both links of one alliance and answers whether there was one to remove.
+    /// Removes one alliance and answers whether there was one to remove.
     public boolean unally(Store<EntityStore> store, Ref<EntityStore> entity, Ref<EntityStore> other) {
         if (!isAllied(entity, other)) {
             return false;
         }
         var relationship = Relwind.get().getRelationships();
         relationship.removeTarget(store, entity, alliedWith, other);
-        relationship.removeTarget(store, other, alliedWith, entity);
         return true;
     }
 

@@ -19,7 +19,6 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Relationships apply to native children as well as roots. A relationship link does not itself
@@ -31,7 +30,7 @@ class NativeHierarchyTest {
     void tickingMatchesExplicitIterationBeforeAndAfterReparenting() {
         try (var fixture = new StoreFixture()) {
             var type = new RelationshipTypeRegistry<>(fixture.registry())
-                .registerRelationship(RelationshipRules.single());
+                .registerRelationship(RelationshipTraits.defaults().exclusive());
             var parent = fixture.addEntity(new Position(), null);
             var source = fixture.addEntity(new Position(), null);
             var target = fixture.addEntity(new Position(), null);
@@ -78,7 +77,7 @@ class NativeHierarchyTest {
     void deletingANativeChildCascadesIntoItsRelationshipSource() {
         try (var fixture = new StoreFixture()) {
             var type = new RelationshipTypeRegistry<>(fixture.registry())
-                .registerRelationship(RelationshipRules.single().cascadeSource());
+                .registerRelationship(RelationshipTraits.defaults().exclusive().onDeleteTarget(RelationshipTraits.OnDeleteTarget.DELETE));
             var parent = fixture.addEntity(new Position(), null);
             var source = fixture.addEntity(new Position(), null);
             var target = fixture.addEntity(new Position(), null);
@@ -88,7 +87,7 @@ class NativeHierarchyTest {
             fixture.store().removeEntity(target, RemoveReason.REMOVE);
 
             assertFalse(target.isValid());
-            assertFalse(source.isValid(), "Deleting a child target must execute relationship deletion rules");
+            assertFalse(source.isValid(), "Deleting a child target must execute relationship deletion traits");
             assertTrue(parent.isValid());
         }
     }
@@ -97,7 +96,7 @@ class NativeHierarchyTest {
     void pluginCanExplicitlyRestrictItsTicksToRoots() {
         try (var fixture = new StoreFixture()) {
             var type = new RelationshipTypeRegistry<>(fixture.registry())
-                .registerRelationship(RelationshipRules.single());
+                .registerRelationship(RelationshipTraits.defaults().exclusive());
             var parent = fixture.addEntity(new Position(), null);
             var child = fixture.addEntity(new Position(), null);
             var target = fixture.addEntity(new Position(), null);
@@ -126,45 +125,6 @@ class NativeHierarchyTest {
             fixture.tick(0.05f);
 
             assertEquals(List.of(parent), ticked);
-        }
-    }
-
-    @Test
-    void replacingLinkDataOnANativeChildAnnouncesTheChange() {
-        try (var fixture = new StoreFixture()) {
-            var type = new RelationshipTypeRegistry<>(fixture.registry()).registerRelationship(
-                fixture.positionType(), new RelationshipDataObserver<Object, Position>() { },
-                RelationshipRules.single());
-            var parent = fixture.addEntity(new Position(), null);
-            var child = fixture.addEntity(new Position(), null);
-            var target = fixture.addEntity(new Position(), null);
-            fixture.store().setParent(child, parent);
-            var initial = new Position(1, 2);
-            relationships.addTarget(fixture.store(), child, type, target, initial);
-            var changes = new ArrayList<Position>();
-            var announcedSources = new ArrayList<Ref<Object>>();
-            var announcedTargets = new ArrayList<Ref<Object>>();
-            var announcedOldData = new ArrayList<Position>();
-            fixture.registry().registerSystem(new RelationshipChangeSystem<Object, Position>(type) {
-                @Override
-                protected void onRelationshipSet(LinkedEntity<Object> source, LinkedEntity<Object> linkedTarget,
-                                                 Position oldData, Position data, Store<Object> store,
-                                                 CommandBuffer<Object> commands) {
-                    announcedSources.add(source.reference());
-                    announcedTargets.add(linkedTarget.reference());
-                    announcedOldData.add(oldData);
-                    changes.add(data);
-                }
-            });
-            var replacement = new Position(3, 4);
-
-            fixture.store().putComponent(child, fixture.positionType(), replacement);
-
-            assertEquals(List.of(replacement), changes);
-            assertSame(child, announcedSources.getFirst());
-            assertSame(target, announcedTargets.getFirst());
-            assertSame(initial, announcedOldData.getFirst());
-            assertSame(replacement, relationships.getData(child, type, target));
         }
     }
 }

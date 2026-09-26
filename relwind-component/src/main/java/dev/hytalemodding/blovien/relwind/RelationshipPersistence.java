@@ -8,7 +8,6 @@ package dev.hytalemodding.blovien.relwind;
 
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.component.CommandBuffer;
-import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Holder;
 import com.hypixel.hytale.component.Ref;
@@ -144,11 +143,8 @@ public final class RelationshipPersistence<ECS_TYPE> {
         var sourceId = requireIdentity(source);
         // readLinks decodes each target through the installation its record names
         for (var type : types.getRegisteredTypes()) {
-            // Hytale loads a data component with its source
-            ComponentType<ECS_TYPE, Component<ECS_TYPE>> dataType = type.getDescriptor().getDataComponentType();
             for (var link : metadata.readLinks(type)) {
-                var data = dataType == null ? link.data() : store.getComponent(source, dataType);
-                tracker.restorePersistent(type, sourceId, link.target(), source, data);
+                tracker.restorePersistent(type, sourceId, link.target(), source, link.data());
             }
         }
     }
@@ -265,12 +261,10 @@ public final class RelationshipPersistence<ECS_TYPE> {
         var source = tracker.getHolderSource(holder);
         var records = metadata.readLinks(type);
         boundMetadata.put(metadata, Boolean.TRUE);
-        ComponentType<ECS_TYPE, Component<ECS_TYPE>> dataType = type.getDescriptor().getDataComponentType();
         for (RelationshipMetadata.DecodedLink record : records) {
             if (tracker.hasHolderLink(type, holder, source, record.target(), context)) continue;
             var linkedEntity = tracker.getRef(record.target(), context);
-            var data = dataType == null ? record.data() : holder.getComponent(dataType);
-            link.accept(linkedEntity != null && linkedEntity.getStore() == context ? linkedEntity : null, data);
+            link.accept(linkedEntity != null && linkedEntity.getStore() == context ? linkedEntity : null, record.data());
         }
     }
 
@@ -298,8 +292,19 @@ public final class RelationshipPersistence<ECS_TYPE> {
         if (!type.getDescriptor().isPersistent()) {
             return;
         }
-        if (type.getDescriptor().linkDataClass() != Void.class && type.getDescriptor().getDataComponentType() == null
-            && type.getCodec() == null) {
+        if (type.getDescriptor().linkDataClass() != Void.class && type.getCodec() == null) {
+            throw new IllegalStateException("Persistent relationship payloads require a registered codec");
+        }
+        requireIdentity(source);
+        requireIdentity(target);
+    }
+
+    void validateMutationWithIdentities(GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type,
+        @Nullable Object source, @Nullable Object target) {
+        if (!type.getDescriptor().isPersistent()) {
+            return;
+        }
+        if (type.getDescriptor().linkDataClass() != Void.class && type.getCodec() == null) {
             throw new IllegalStateException("Persistent relationship payloads require a registered codec");
         }
         requireIdentity(source);
@@ -352,10 +357,6 @@ public final class RelationshipPersistence<ECS_TYPE> {
             changed = true;
         }
         if (!changed) {
-            // the record did not change, but the data component did
-            if (present && type.getDescriptor().getDataComponentType() != null) {
-                installedTracker.getStoreRuntime().markNeedsSaving(store, source);
-            }
             return;
         }
         replaceMetadata(store, source, replacement);
@@ -388,11 +389,7 @@ public final class RelationshipPersistence<ECS_TYPE> {
         boundMetadata.put(metadata, Boolean.TRUE);
         var link = getDecodedLink(metadata, type, target);
         if (link == null) return null;
-        ComponentType<ECS_TYPE, Component<ECS_TYPE>> dataType = type.getDescriptor().getDataComponentType();
-        // a data component holds the data of that source's one link
-        return dataType == null
-            ? type.getDescriptor().linkDataClass().cast(link.data())
-            : type.getDescriptor().linkDataClass().cast(source.getComponent(dataType));
+        return type.getDescriptor().linkDataClass().cast(link.data());
     }
 
     void removeFromHolder(GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type, Holder<ECS_TYPE> holder, Object targetId) {

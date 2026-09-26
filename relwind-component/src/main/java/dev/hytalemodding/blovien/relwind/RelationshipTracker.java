@@ -21,12 +21,12 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.BiConsumer;
 
 /// Keeps the links of a linked entity while it is away and puts them back when it returns.
@@ -42,13 +42,13 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
     private final boolean scopedToStore;
     private final IdentityIndex<ECS_TYPE, Object> index = new IdentityIndex<>();
     // sources is keyed by the source key and incoming by the target key, each from its own side
-    private final Map<Object, ArrayList<Link>> sources = new HashMap<>();
-    private final Map<Object, Set<Link>> incoming = new HashMap<>();
+    private final Map<Object, Object> sources = new HashMap<>();
+    private final Map<Object, Object> incoming = new HashMap<>();
     private final UnresolvedIncoming unresolvedIncoming = new UnresolvedIncoming();
     private final Map<Holder<ECS_TYPE>, HeldSource> holderSources = new IdentityHashMap<>();
     private final Map<Ref<ECS_TYPE>, Pending> pending = new IdentityHashMap<>();
     // a removed link still owes a record cleanup or a cascade, once its source is back
-    private final Map<Object, ArrayList<Link>> cleanupPending = new HashMap<>();
+    private final Map<Object, Object> cleanupPending = new HashMap<>();
 
     RelationshipTracker(
         RelationshipTypeRegistry<ECS_TYPE> types,
@@ -164,12 +164,12 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
             return result;
         }
         for (var link : getAffected(key)) {
-            if (key.equals(link.sourceId)) {
+            if (link.type.getRelationshipTypeRegistry().getTracker() == this && key.equals(link.sourceId)) {
                 link.sourceRef = ref;
                 link.sourceStore = ref.getStore();
                 setSourceHolder(link, null);
             }
-            if (key.equals(link.targetId)) {
+            if (link.type.getTargetRelationshipTypeRegistry().getTracker() == this && key.equals(link.targetId)) {
                 link.targetRef = ref;
             }
         }
@@ -197,6 +197,7 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
                 link.sourceRef = null;
             }
         }
+        discoverLinks(key, ref, holder);
         var affected = getAffected(key);
         for (var link : affected) {
             if (holder != null && link.sourceRef == ref) {
@@ -230,6 +231,19 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
                 link.targetRef = null;
             }
             link.resolved = false;
+            dropSavedAwayLink(link);
+        }
+    }
+
+    private static void dropSavedAwayLink(Link link) {
+        // invalid references can still be waiting for their unload classification
+        if (link.sourceRef != null || link.targetRef != null || link.pending != 0 || link.cascade
+            || !link.type.getDescriptor().isPersistent()) return;
+        var sourceTypes = link.type.getRelationshipTypeRegistry();
+        var sourceTracker = sourceTypes.getTracker();
+        if (sourceTracker != null && sourceTypes.getPersistence() != null && isCurrent(link)
+            && !sourceTracker.getPendingCleanup(link.sourceId).contains(link)) {
+            unfile(link);
         }
     }
 
@@ -256,15 +270,64 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         if (commandBuffer.getStore() != ref.getStore()) {
             throw new IllegalArgumentException("Command buffer belongs to a different store");
         }
+        discoverLinks(key, ref, null);
         var affected = getAffected(key);
         for (var link : affected) {
-            if (!isSameStore(link)) {
-                continue;
-            }
             capture(link, ref, null);
         }
         commandBuffer.run(store -> prepareAfterRemoval(store, key, ref, affected));
         return true;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void discoverLinks(Object key, Ref<ECS_TYPE> ref, @Nullable Holder<ECS_TYPE> holder) {
+        if (!ref.getStore().isInThread() || !ref.isValid() && holder == null) return;
+        var registry = ref.getStore().getRegistry();
+        for (var type : RelationshipAccessSystem.getOutgoingTypes(registry)) {
+            var outgoing = readComponent(ref, holder, type.getSourceType());
+            if (outgoing == null) continue;
+            for (int i = 0; i < outgoing.size(); i++) {
+                recordLoadedLink(type, ref, outgoing.getTarget(i), key, ref, outgoing.getData(i, Object.class));
+            }
+        }
+        for (var type : RelationshipAccessSystem.getIncomingTypes(registry)) {
+            var incoming = readComponent(ref, holder, type.getIncomingType());
+            if (incoming == null) continue;
+            incoming.forEach(source -> {
+                if (source == ref || !source.isValid()) return;
+                GenericRelationshipType sourceType = type;
+                Ref sourceRef = source;
+                var outgoing = (OutgoingLink) sourceRef.getStore().getComponent(sourceRef, sourceType.getSourceType());
+                if (outgoing != null && outgoing.contains(ref)) {
+                    recordLoadedLink(type, source, ref, key, ref, outgoing.getData(ref, Object.class));
+                }
+            });
+        }
+    }
+
+    @Nullable
+    private static <ECS_TYPE, C extends Component<ECS_TYPE>> C readComponent(
+        Ref<ECS_TYPE> ref, @Nullable Holder<ECS_TYPE> holder, ComponentType<ECS_TYPE, C> type
+    ) {
+        if (ref.isValid()) return ref.getStore().getComponent(ref, type);
+        return holder == null ? null : holder.getComponent(type);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void recordLoadedLink(GenericRelationshipType type, Ref<?> source, Ref<?> target,
+        Object leavingKey, Ref<ECS_TYPE> leaving, @Nullable Object data) {
+        var sourceTracker = type.getRelationshipTypeRegistry().getTracker();
+        var targetTracker = type.getTargetRelationshipTypeRegistry().getTracker();
+        if (sourceTracker == null || targetTracker == null) return;
+        var sourceId = source == leaving && sourceTracker == this ? leavingKey
+            : source.isValid() ? sourceTracker.keyOfRef(source) : null;
+        var targetId = target == leaving && targetTracker == this ? leavingKey
+            : target.isValid() ? targetTracker.keyOfRef(target) : null;
+        if (sourceId == null || targetId == null) return;
+        if (sourceTracker.find(type, sourceId, targetId) != null) return;
+        var link = new Link(type, sourceId, targetId, source, target);
+        link.data = data;
+        file(link);
     }
 
     private synchronized void prepareAfterRemoval(Store<ECS_TYPE> store, Object key, Ref<ECS_TYPE> ref, List<Link> affected) {
@@ -302,6 +365,8 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
             link.pending--;
             if (!isRetainedOn(link.type.getDescriptor(), reason)) {
                 removeByPolicy(link, unloaded);
+            } else {
+                dropSavedAwayLink(link);
             }
         }
         resolveLinks(key);
@@ -351,10 +416,11 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         if (!index.isCurrent(key, ref)) {
             return;
         }
+        discoverLinks(key, ref, holder);
         index.remove(key, ref);
         var discarded = cleanupPending.remove(key);
         if (discarded != null) {
-            for (var link : discarded) {
+            for (var link : links(discarded)) {
                 setSourceHolder(link, null);
             }
         }
@@ -383,8 +449,8 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
                 continue;
             }
             if (link.targetId.equals(key) && !link.sourceId.equals(key)) {
-                link.cascade = link.type.getDescriptor().getTargetDeletion()
-                    == RelationshipRules.TargetDeletion.CASCADE_SOURCE;
+                link.cascade = link.type.getDescriptor().getOnDeleteTarget()
+                    == RelationshipTraits.OnDeleteTarget.DELETE;
             }
             removeByPolicy(link, ref);
         }
@@ -406,14 +472,29 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
     /// @throws IllegalStateException if this installation scopes its identities to a Store
     public synchronized boolean contains(GenericRelationshipType<ECS_TYPE, ?, ?> type, ID sourceId, ID targetId) {
         requireUnscopedIdentities();
-        return find(type, sourceId, targetId) != null;
+        return find(type, sourceId, targetId) != null || hasLoadedLink(type, sourceId, targetId);
     }
 
     /// @throws IllegalStateException if this installation scopes its identities to a Store
     public synchronized boolean isResolved(GenericRelationshipType<ECS_TYPE, ?, ?> type, ID sourceId, ID targetId) {
         requireUnscopedIdentities();
         var link = find(type, sourceId, targetId);
-        return link != null && link.resolved;
+        return link == null ? hasLoadedLink(type, sourceId, targetId) : link.resolved;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private boolean hasLoadedLink(GenericRelationshipType type, @Nullable Object sourceId, @Nullable Object targetId) {
+        if (!type.getRelationshipTypeRegistry().isRegistered(type)) return false;
+        var targetTracker = type.getTargetRelationshipTypeRegistry().getTracker();
+        var source = getLoadedRef(sourceId);
+        var target = targetTracker == null ? null : targetTracker.getLoadedRef(targetId);
+        if (source == null || target == null) return false;
+        var outgoing = (OutgoingLink) source.getStore().getComponent(source, type.getSourceType());
+        return outgoing != null && outgoing.contains(target);
+    }
+
+    synchronized boolean hasRecordedLinks() {
+        return !sources.isEmpty() || !incoming.isEmpty() || !cleanupPending.isEmpty();
     }
 
     // Hytale clears the outgoing component on removal
@@ -479,12 +560,26 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         Store<ECS_TYPE> context
     ) {
         var targetKey = keyOf(target, context);
-        var retained = getOutgoing(source);
-        for (Link link : retained) {
+        return containsHolderLink(sources.get(source), type, holder, targetKey)
+            || containsHolderLink(cleanupPending.get(source), type, holder, targetKey);
+    }
+
+    private static boolean containsHolderLink(
+        @Nullable Object records,
+        GenericRelationshipType<?, ?, ?> type,
+        Holder<?> holder,
+        @Nullable Object targetKey
+    ) {
+        if (records == null) return false;
+        if (records instanceof Link link) {
             if (link.type == type && link.sourceHolder == holder && link.targetId.equals(targetKey)) return true;
+            return false;
         }
-        var cleanups = getPendingCleanup(source);
-        for (Link link : cleanups) {
+        // Outgoing and cleanup records both use an ArrayList when more than one record is retained.
+        @SuppressWarnings("unchecked")
+        var links = (List<Link>) records;
+        for (int i = 0; i < links.size(); i++) {
+            var link = links.get(i);
             if (link.type == type && link.sourceHolder == holder && link.targetId.equals(targetKey)) return true;
         }
         return false;
@@ -492,7 +587,19 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
 
     synchronized boolean hasUnresolvedOutgoing(GenericRelationshipType<ECS_TYPE, ?, ?> type, Ref<ECS_TYPE> source) {
         Objects.requireNonNull(source, "source");
-        for (var link : getOutgoing(keyOfRef(source))) {
+        return hasUnresolvedOutgoing(type, source, getIdentity(source));
+    }
+
+    synchronized boolean hasUnresolvedOutgoing(GenericRelationshipType<ECS_TYPE, ?, ?> type, Ref<ECS_TYPE> source,
+        @Nullable Object sourceIdentity) {
+        var retained = sources.get(keyOf(sourceIdentity, source.getStore()));
+        if (retained == null) return false;
+        if (retained instanceof Link link) return link.type == type && !link.resolved;
+        // Multiple outgoing records use an ArrayList. Scan it without allocating an iterator per hop.
+        @SuppressWarnings("unchecked")
+        var links = (List<Link>) retained;
+        for (int i = 0; i < links.size(); i++) {
+            var link = links.get(i);
             if (link.type == type && !link.resolved) return true;
         }
         return false;
@@ -506,7 +613,7 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         unresolvedIncoming.type = type;
         unresolvedIncoming.found = false;
         try {
-            links.forEach(unresolvedIncoming);
+            links(links).forEach(unresolvedIncoming);
             return unresolvedIncoming.found;
         } finally {
             unresolvedIncoming.type = null;
@@ -528,41 +635,47 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
     synchronized void onTypeUnregistered(GenericRelationshipType<?, ?, ?> type) {
         var removed = new ArrayList<Link>();
         for (var outgoing : sources.values()) {
-            for (var link : outgoing) {
+            for (var link : links(outgoing)) {
                 if (link.type == type) {
                     removed.add(link);
                 }
             }
         }
         for (var targets : incoming.values()) {
-            for (var link : targets) {
+            for (var link : links(targets)) {
                 if (link.type == type && !removed.contains(link)) {
                     removed.add(link);
                 }
             }
         }
         removed.forEach(RelationshipTracker::unfile);
-        for (var links : cleanupPending.values()) {
-            for (int i = links.size() - 1; i >= 0; i--) {
-                var link = links.get(i);
+        for (var records : new ArrayList<>(cleanupPending.values())) {
+            for (var link : new ArrayList<>(links(records))) {
                 if (link.type == type && !link.cascade) {
-                    links.remove(i);
+                    removeRecord(cleanupPending, link.sourceId, link);
                     setSourceHolder(link, null);
                 }
             }
         }
-        cleanupPending.values().removeIf(List::isEmpty);
     }
 
-    synchronized void validateLink(GenericRelationshipType<ECS_TYPE, ?, ?> type, Ref<ECS_TYPE> source, Ref<?> target) {
+    synchronized void validateLink(
+        GenericRelationshipType<ECS_TYPE, ?, ?> type,
+        Ref<ECS_TYPE> source,
+        Ref<?> target,
+        @Nullable Object sourceIdentity,
+        @Nullable Object targetIdentity,
+        boolean replacesExclusiveTarget
+    ) {
+        if (sources.isEmpty() && !retains(type.getDescriptor())) return;
         var targetTracker = type.getTargetRelationshipTypeRegistry().getTracker();
-        var sourceId = keyOfRef(source);
-        var targetId = targetTracker == null ? null : targetTracker.keyOfRef(target);
+        var sourceId = keyOf(sourceIdentity, source.getStore());
+        var targetId = targetTracker == null ? null : targetTracker.keyOf(targetIdentity, target.getStore());
         if (retains(type.getDescriptor()) && (targetTracker == null || sourceId == null || targetId == null)) {
             throw new IllegalStateException("Relationship type '" + type.getDescriptor().id()
                 + "' requires an installed tracker and stable identities on both sides");
         }
-        if (type.getDescriptor().getCardinality() == RelationshipRules.Cardinality.SINGLE_TARGET) {
+        if (type.getDescriptor().isExclusive() && !replacesExclusiveTarget) {
             for (var link : getOutgoing(sourceId)) {
                 if (link.type == type && !link.resolved && !link.targetId.equals(targetId)) {
                     throw new IllegalStateException(
@@ -573,12 +686,14 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         }
     }
 
-    synchronized boolean hasUnresolvedLink(GenericRelationshipType<ECS_TYPE, ?, ?> type, Ref<ECS_TYPE> source, Ref<?> target) {
+    synchronized boolean hasUnresolvedLink(GenericRelationshipType<ECS_TYPE, ?, ?> type, Ref<ECS_TYPE> source, Ref<?> target,
+        @Nullable Object sourceIdentity, @Nullable Object targetIdentity) {
+        if (sources.isEmpty()) return false;
         var targetTracker = type.getTargetRelationshipTypeRegistry().getTracker();
         if (targetTracker == null) {
             return false;
         }
-        var link = find(type, keyOfRef(source), targetTracker.keyOfRef(target));
+        var link = find(type, keyOf(sourceIdentity, source.getStore()), targetTracker.keyOf(targetIdentity, target.getStore()));
         return link != null && !link.resolved;
     }
 
@@ -593,7 +708,20 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         Ref<ECS_TYPE> source,
         Ref<ECS_TYPE> target
     ) {
-        var link = find(type, keyOfRef(source), keyOfRef(target));
+        var sourceIdentity = getIdentity(source);
+        return getUnresolvedLinkData(type, source, target, sourceIdentity,
+            source == target ? sourceIdentity : getIdentity(target));
+    }
+
+    @Nullable
+    synchronized <LINK_DATA> LINK_DATA getUnresolvedLinkData(
+        GenericRelationshipType<ECS_TYPE, ECS_TYPE, LINK_DATA> type,
+        Ref<ECS_TYPE> source,
+        Ref<ECS_TYPE> target,
+        @Nullable Object sourceIdentity,
+        @Nullable Object targetIdentity
+    ) {
+        var link = find(type, keyOf(sourceIdentity, source.getStore()), keyOf(targetIdentity, target.getStore()));
         assert link != null && !link.resolved;
         return type.getDescriptor().linkDataClass().cast(link.data);
     }
@@ -602,32 +730,32 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         GenericRelationshipType<ECS_TYPE, ECS_TYPE, ?> type,
         Ref<ECS_TYPE> source,
         Ref<ECS_TYPE> target,
+        @Nullable Object sourceIdentity,
+        @Nullable Object targetIdentity,
         @Nullable Object data
     ) {
-        var link = find(type, keyOfRef(source), keyOfRef(target));
+        var link = find(type, keyOf(sourceIdentity, source.getStore()), keyOf(targetIdentity, target.getStore()));
         if (link == null || link.resolved) {
             return;
         }
         link.data = data;
     }
 
-    /// Each side's key comes from its own installation. A same-Store type uses this installation for both.
-    synchronized void onLinked(GenericRelationshipType<ECS_TYPE, ?, ?> type, Ref<ECS_TYPE> source, Ref<?> target) {
+    synchronized void dropUnresolvedLink(GenericRelationshipType<ECS_TYPE, ?, ?> type, Ref<ECS_TYPE> source, Ref<?> target,
+        @Nullable Object sourceIdentity, @Nullable Object targetIdentity) {
         var targetTracker = type.getTargetRelationshipTypeRegistry().getTracker();
-        if (targetTracker == null) {
-            return;
-        }
-        var sourceId = keyOfRef(source);
-        var targetId = targetTracker.keyOfRef(target);
-        if (sourceId == null || targetId == null) {
-            return;
-        }
-        var link = findByRefs(type, source, target);
-        if (link == null) {
-            file(new Link(type, sourceId, targetId, source, target));
-        } else {
-            link.data = null;
-            link.resolved = true;
+        if (targetTracker == null) return;
+        var link = find(type, keyOf(sourceIdentity, source.getStore()), targetTracker.keyOf(targetIdentity, target.getStore()));
+        if (link != null && !link.resolved) unfile(link);
+    }
+
+    synchronized void onLinkDeleted(GenericRelationshipType<ECS_TYPE, ?, ?> type, Ref<ECS_TYPE> source,
+        Ref<?> target, @Nullable Object sourceIdentity) {
+        for (var link : getOutgoing(keyOf(sourceIdentity, source.getStore()))) {
+            if (link.type == type && link.sourceRef == source && link.targetRef == target) {
+                unfile(link);
+                return;
+            }
         }
     }
 
@@ -652,6 +780,7 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         if (sourceId == null || targetId == null) {
             return;
         }
+        if (hasLoadedLink(type, sourceId, targetId)) return;
         for (var cleanup : getPendingCleanup(sourceId)) {
             if (cleanup.type == type && cleanup.targetId.equals(targetId)) {
                 return;
@@ -659,7 +788,7 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         }
         var link = find(type, sourceId, targetId);
         if (link == null) {
-            if (type.getDescriptor().getCardinality() == RelationshipRules.Cardinality.SINGLE_TARGET) {
+            if (type.getDescriptor().isExclusive()) {
                 for (var outgoing : getOutgoing(sourceId)) {
                     if (outgoing.type == type) {
                         return;
@@ -686,11 +815,42 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         }
     }
 
-    synchronized void onUnlinked(GenericRelationshipType<ECS_TYPE, ?, ?> type, Ref<ECS_TYPE> source, Ref<?> target) {
-        var link = findByRefs(type, source, target);
-        if (link != null) {
-            unfile(link);
+    synchronized <LINK_DATA> List<DroppedTarget<LINK_DATA>> dropUnresolvedTargets(
+        GenericRelationshipType<ECS_TYPE, ?, LINK_DATA> type,
+        Ref<ECS_TYPE> source,
+        @Nullable Object sourceIdentity
+    ) {
+        var dropped = new ArrayList<DroppedTarget<LINK_DATA>>();
+        for (var link : new ArrayList<>(getOutgoing(keyOf(sourceIdentity, source.getStore())))) {
+            if (link.type == type && !link.resolved) {
+                dropped.add(new DroppedTarget<>(identityOf(link.targetId),
+                    type.getDescriptor().linkDataClass().cast(link.data)));
+                unfile(link);
+            }
         }
+        return dropped;
+    }
+
+    record DroppedTarget<LINK_DATA>(Object identity, @Nullable LINK_DATA data) { }
+
+    @Nullable
+    synchronized <LINK_DATA> DroppedTarget<LINK_DATA> dropUnresolvedTwin(
+        GenericRelationshipType<ECS_TYPE, ECS_TYPE, LINK_DATA> type,
+        Ref<ECS_TYPE> source,
+        @Nullable Object sourceIdentity,
+        Object awayIdentity
+    ) {
+        var twin = find(type, keyOf(awayIdentity, source.getStore()), keyOf(sourceIdentity, source.getStore()));
+        if (twin == null || twin.resolved) return null;
+        var data = type.getDescriptor().linkDataClass().cast(twin.data);
+        if (type.getDescriptor().isPersistent() && type.getRelationshipTypeRegistry().getPersistence() != null) {
+            addRecord(cleanupPending, twin.sourceId, twin, false);
+            unfile(twin);
+            applyCleanup(twin);
+        } else {
+            unfile(twin);
+        }
+        return new DroppedTarget<>(awayIdentity, data);
     }
 
     /// Copies the link data out before the component detaches. Resolution puts it back.
@@ -712,11 +872,7 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
             unfile(link);
             return;
         }
-        // the Link holds this component instance while it is unresolved, and resolution passes it back
-        ComponentType dataType = link.type.getDescriptor().getDataComponentType();
-        link.data = dataType == null
-            ? outgoing.getData(link.targetRef, Object.class)
-            : getAttachedData(link, dataType, sourceHolder);
+        link.data = outgoing.getData(link.targetRef, Object.class);
     }
 
     /// Read from the holder while the source is leaving, and from its Store otherwise.
@@ -732,18 +888,6 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         return (OutgoingLink) source.getStore().getComponent(source, sourceType);
     }
 
-    /// Only a same-Store type carries its link data in a component.
-    @Nullable
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private Component<?> getAttachedData(Link link, ComponentType dataType, @Nullable Holder<?> sourceHolder) {
-        if (sourceHolder != null) {
-            return (Component<?>) sourceHolder.getComponent(dataType);
-        }
-        assert link.sourceRef != null;
-        Ref source = link.sourceRef;
-        return (Component<?>) source.getStore().getComponent(source, dataType);
-    }
-
     /// One installation repairs both sides with a single command. Two installations repair each
     /// side on the thread of its own Store.
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -751,9 +895,15 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         if (!link.resolved || link.sourceRef == null || link.targetRef == null) {
             return;
         }
+        detach(link, link.sourceRef, link.targetRef);
+        link.resolved = false;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void detach(Link link, Ref<?> sourceRef, Ref<?> targetRef) {
         GenericRelationshipType type = link.type;
-        Ref source = link.sourceRef;
-        Ref target = link.targetRef;
+        Ref source = sourceRef;
+        Ref target = targetRef;
         Store sourceStore = source.getStore();
         Store targetStore = target.getStore();
         var sourceTracker = link.type.getRelationshipTypeRegistry().getTracker();
@@ -763,11 +913,10 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
                 if (source.isValid() && target.isValid()) {
                     RelationshipCommands.remove(sourceStore, null, type, source, target, true, null, false);
                 } else if (sourceStore.isInThread()) {
-                    RelationshipLifecycle.detachAfterUnload(sourceStore, type, source, target,
+                    RelationshipLifecycle.detachLinkedEntity(sourceStore, type, source, target,
                         source.isValid() ? target : source);
                 }
             }
-            link.resolved = false;
             return;
         }
         if (target.isValid()) {
@@ -778,13 +927,12 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
             executeOn(sourceStore, sourceTracker,
                 () -> RelationshipLifecycle.releaseDeletedTarget(type, source, target));
         }
-        link.resolved = false;
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void detachAfterUnload(Store<ECS_TYPE> store, Link link, Ref<ECS_TYPE> unloaded) {
         assert link.sourceRef != null && link.targetRef != null;
-        RelationshipLifecycle.detachAfterUnload((Store) store, (GenericRelationshipType) link.type,
+        RelationshipLifecycle.detachLinkedEntity((Store) store, (GenericRelationshipType) link.type,
             (Ref) link.sourceRef, (Ref) link.targetRef, (Ref) unloaded);
     }
 
@@ -845,11 +993,15 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
             if (link.resolved || !source.isValid() || !target.isValid() || !isCurrent(link)) {
                 return;
             }
-            RelationshipLifecycle.restoreLink(type, source, target, data);
             link.sourceRef = source;
             link.targetRef = target;
-            link.resolved = true;
-            link.data = null;
+            boolean completed = false;
+            try {
+                RelationshipLifecycle.restoreLink(type, source, target, data);
+                completed = true;
+            } finally {
+                finishRestore(link, source, target, completed);
+            }
         });
     }
 
@@ -864,22 +1016,29 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
             RelationshipCommands.add(store, null, (GenericRelationshipType) type, source, target, link.data, null, false);
             completed = true;
         } finally {
-            if (isCurrent(link)) {
-                var outgoing = store.getComponent((Ref<ECS_TYPE>) source, type.getSourceType());
-                if (outgoing != null && outgoing.contains((Ref<ECS_TYPE>) target)) {
-                    link.resolved = true;
-                    link.data = null;
-                } else if (completed) {
-                    unfile(link);
-                }
-            }
+            finishRestore(link, source, target, completed);
         }
     }
 
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void finishRestore(Link link, Ref<?> source, Ref<?> target, boolean completed) {
+        if (!isCurrent(link)) return;
+        var sourceTracker = link.type.getRelationshipTypeRegistry().getTracker();
+        var targetTracker = link.type.getTargetRelationshipTypeRegistry().getTracker();
+        if (link.pending != 0 || sourceTracker.getLoadedRef(link.sourceId) != source
+            || targetTracker == null || targetTracker.getLoadedRef(link.targetId) != target) {
+            detach(link, source, target);
+            return;
+        }
+        GenericRelationshipType type = link.type;
+        Ref sourceRef = source;
+        var outgoing = (OutgoingLink) sourceRef.getStore().getComponent(sourceRef, type.getSourceType());
+        if (completed || outgoing != null && outgoing.contains(target)) unfile(link);
+    }
+
     @Nonnull
-    private List<Link> getOutgoing(@Nullable Object sourceId) {
-        var links = sources.get(sourceId);
-        return links == null ? List.of() : links;
+    private Collection<Link> getOutgoing(@Nullable Object sourceId) {
+        return links(sources.get(sourceId));
     }
 
     @Nonnull
@@ -887,8 +1046,8 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         var links = new ArrayList<>(getOutgoing(id));
         var targets = incoming.get(id);
         if (targets != null) {
-            for (var link : targets) {
-                if (!link.sourceId.equals(id)) {
+            for (var link : links(targets)) {
+                if (link.type.getRelationshipTypeRegistry().getTracker() != this || !link.sourceId.equals(id)) {
                     links.add(link);
                 }
             }
@@ -903,16 +1062,6 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         }
         for (var link : getOutgoing(sourceId)) {
             if (link.type == type && link.targetId.equals(targetId)) {
-                return link;
-            }
-        }
-        return null;
-    }
-
-    @Nullable
-    private Link findByRefs(GenericRelationshipType<?, ?, ?> type, Ref<ECS_TYPE> source, Ref<?> target) {
-        for (var link : getOutgoing(keyOfRef(source))) {
-            if (link.type == type && link.sourceRef == source && link.targetRef == target) {
                 return link;
             }
         }
@@ -935,34 +1084,22 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
     private static void file(Link link) {
         var sourceTracker = link.type.getRelationshipTypeRegistry().getTracker();
         if (sourceTracker != null) {
-            sourceTracker.sources.computeIfAbsent(link.sourceId, ignored -> new ArrayList<>()).add(link);
+            addRecord(sourceTracker.sources, link.sourceId, link, false);
         }
         var targetTracker = link.type.getTargetRelationshipTypeRegistry().getTracker();
         if (targetTracker != null) {
-            targetTracker.incoming.computeIfAbsent(link.targetId, ignored -> new ReferenceOpenHashSet<>()).add(link);
+            addRecord(targetTracker.incoming, link.targetId, link, true);
         }
     }
 
     private static void unfile(Link link) {
         var sourceTracker = link.type.getRelationshipTypeRegistry().getTracker();
         if (sourceTracker != null) {
-            var outgoing = sourceTracker.sources.get(link.sourceId);
-            if (outgoing != null) {
-                outgoing.remove(link);
-                if (outgoing.isEmpty()) {
-                    sourceTracker.sources.remove(link.sourceId);
-                }
-            }
+            removeRecord(sourceTracker.sources, link.sourceId, link);
         }
         var targetTracker = link.type.getTargetRelationshipTypeRegistry().getTracker();
         if (targetTracker != null) {
-            var targets = targetTracker.incoming.get(link.targetId);
-            if (targets != null) {
-                targets.remove(link);
-                if (targets.isEmpty()) {
-                    targetTracker.incoming.remove(link.targetId);
-                }
-            }
+            removeRecord(targetTracker.incoming, link.targetId, link);
         }
         if (sourceTracker != null && !sourceTracker.getPendingCleanup(link.sourceId).contains(link)) {
             link.sourceRef = null;
@@ -973,10 +1110,44 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         link.resolved = false;
     }
 
+    @SuppressWarnings("unchecked")
+    private static Collection<Link> links(@Nullable Object value) {
+        if (value == null) return List.of();
+        if (value instanceof Link link) return List.of(link);
+        return (Collection<Link>) value;
+    }
+
+    private static void addRecord(Map<Object, Object> records, Object id, Link link, boolean incoming) {
+        var previous = records.get(id);
+        if (previous == null) {
+            records.put(id, link);
+        } else if (previous instanceof Link first) {
+            if (first == link) return;
+            Collection<Link> multiple = incoming ? new ReferenceOpenHashSet<>(2) : new ArrayList<>(2);
+            multiple.add(first);
+            multiple.add(link);
+            records.put(id, multiple);
+        } else {
+            var multiple = links(previous);
+            if (!multiple.contains(link)) multiple.add(link);
+        }
+    }
+
+    private static void removeRecord(Map<Object, Object> records, Object id, Link link) {
+        var previous = records.get(id);
+        if (previous == link) {
+            records.remove(id);
+        } else if (previous != null && !(previous instanceof Link)) {
+            var multiple = links(previous);
+            if (!multiple.remove(link)) return;
+            if (multiple.size() == 1) records.put(id, multiple.iterator().next());
+            else if (multiple.isEmpty()) records.remove(id);
+        }
+    }
+
     @Nonnull
-    private List<Link> getPendingCleanup(@Nullable Object sourceId) {
-        var links = cleanupPending.get(sourceId);
-        return links == null ? List.of() : links;
+    private Collection<Link> getPendingCleanup(@Nullable Object sourceId) {
+        return links(cleanupPending.get(sourceId));
     }
 
     /// Runs on the source side. It owns the records, the holder and the Store.
@@ -1000,7 +1171,6 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
                 (Ref) (link.sourceRef == unloaded ? null : link.sourceRef), identityOf(link.sourceId),
                 (Ref) (link.targetRef == unloaded ? null : link.targetRef), identityOf(link.targetId), link.data)
             : null;
-        detachLinkData(link, unloaded);
         var persistence = link.type.getRelationshipTypeRegistry().getPersistence();
         if (!link.cascade && (persistence == null
             || !link.type.getDescriptor().isPersistent())) {
@@ -1011,10 +1181,7 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
             }
             return;
         }
-        var cleanups = cleanupPending.computeIfAbsent(link.sourceId, ignored -> new ArrayList<>());
-        if (!cleanups.contains(link)) {
-            cleanups.add(link);
-        }
+        addRecord(cleanupPending, link.sourceId, link, false);
         unfile(link);
         if (link.sourceHolder != null && (link.sourceRef == null || !link.sourceRef.isValid())
             && link.sourceStore.isInThread()) {
@@ -1022,30 +1189,6 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         } else {
             executeOnSource(link.sourceStore, () -> applyCleanup(link, notification));
         }
-    }
-
-    /// A cascading source is deleted whole and takes the component with it. A source that is away
-    /// keeps its component until it is removed itself.
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private void detachLinkData(Link link, Ref<?> unloaded) {
-        ComponentType dataType = link.type.getDescriptor().getDataComponentType();
-        Ref source = link.sourceRef;
-        if (dataType == null || link.cascade || source == null || source == unloaded || !source.isValid()) {
-            return;
-        }
-        Store store = source.getStore();
-        executeOnSource(store, () -> {
-            if (!source.isValid() || store.getComponent(source, dataType) == null) {
-                return;
-            }
-            // this removal announces the change itself
-            RelationshipDataObserver.beginCommandWrite();
-            try {
-                store.removeComponent(source, dataType);
-            } finally {
-                RelationshipDataObserver.endCommandWrite();
-            }
-        });
     }
 
     /// Every link filed here has its source in this installation.
@@ -1060,15 +1203,14 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private synchronized void applyCleanup(Link link, @Nullable RelationshipChangeSystem.ChangeEvent<?, ?> notification) {
-        var cleanups = cleanupPending.get(link.sourceId);
-        if (cleanups == null || !cleanups.contains(link)) {
+        if (!getPendingCleanup(link.sourceId).contains(link)) {
             return;
         }
         var replacement = find(link.type, link.sourceId, link.targetId);
         boolean changedAssociation = !link.type.getRelationshipTypeRegistry().isRegistered((GenericRelationshipType) link.type)
             || (replacement != null && replacement != link);
         if (types.getTracker() != this || (!link.cascade && changedAssociation)) {
-            cleanups.remove(link);
+            removeRecord(cleanupPending, link.sourceId, link);
         } else {
             // a load may have moved the source since this action was queued
             if (!link.sourceStore.isInThread()) {
@@ -1101,12 +1243,9 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
                 // no entity and no holder to clean
                 return;
             }
-            cleanups.remove(link);
+            removeRecord(cleanupPending, link.sourceId, link);
         }
         setSourceHolder(link, null);
-        if (cleanups.isEmpty()) {
-            cleanupPending.remove(link.sourceId);
-        }
         if (notification != null && !changedAssociation) {
             // a holder removal callback runs while the Store is processing
             // TODO: Remove this check when removal callbacks can supply a deferred command context.
@@ -1132,8 +1271,8 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
 
     private static boolean retains(RelationshipDescriptor<?, ?> descriptor) {
         return descriptor.isPersistent()
-            || descriptor.getTransfer() == RelationshipRules.Survival.RETAIN
-            || descriptor.getTemporaryDeactivation() == RelationshipRules.Survival.RETAIN;
+            || descriptor.getTransfer() == RelationshipTraits.Survival.RETAIN
+            || descriptor.getTemporaryDeactivation() == RelationshipTraits.Survival.RETAIN;
     }
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
@@ -1141,9 +1280,9 @@ public final class RelationshipTracker<ECS_TYPE, ID> {
         return switch (reason) {
             // the links wait for onUnloadResolved
             case PENDING -> true;
-            case TRANSFER -> descriptor.getTransfer() == RelationshipRules.Survival.RETAIN;
+            case TRANSFER -> descriptor.getTransfer() == RelationshipTraits.Survival.RETAIN;
             case DEACTIVATION ->
-                descriptor.getTemporaryDeactivation() == RelationshipRules.Survival.RETAIN;
+                descriptor.getTemporaryDeactivation() == RelationshipTraits.Survival.RETAIN;
         };
     }
 

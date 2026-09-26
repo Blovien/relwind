@@ -16,7 +16,12 @@ Various examples, present in `relwind-examples`, can give ideas of various usage
 Other features are the following:
 
 - **Relationship queries:** combine component and relationship conditions, select link data, and traverse reachable entities with an explicit depth limit.
-- **Lifecycle policies:** choose whether links survive transfers and temporary deactivation, and whether deleting a target also deletes its linked sources.
+- **Wildcard conditions:** `existsAny` tests links across a registry's same-Store types. `enumerateAny` binds each matching link with its relationship type and data.
+- **Link reads:** `hasTarget` checks one loaded link. `forEachLink` and `forEachIncomingLink` visit loaded links across relationship types, including bridge types, with their type and data.
+- **Clear targets:** `clearTargets` removes a source's loaded and away links of one type. A command buffer queues the clear until it drains.
+- **Exclusive types:** `putTarget` replaces the current target and its data, including a target that is away. `addTarget` rejects a second target.
+- **Symmetric types:** `symmetric()` keeps twin links and their data together when a command adds, changes or removes a link.
+- **Lifecycle traits:** choose whether links survive transfers and temporary deactivation, and whether deleting a target also deletes its linked sources.
 - **Persistence:** named relationship types save their links; unnamed types remain in memory. Retained links can remain unresolved while a linked entity is unavailable.
 - **ECS integration:** native command buffers and relationship-aware ticking, change, event, and lifecycle systems.
 - **Entity and block entity support:** relationships within `EntityStore` or `ChunkStore`
@@ -88,7 +93,7 @@ The dependency ensures Relwind is set up before your plugin accesses `Relwind.ge
 
 | Module | Responsibility |
 | --- | --- |
-| [`relwind-component`](relwind-component) | Generic relationship API, storage, queries, lifecycle policies and persistence contracts. |
+| [`relwind-component`](relwind-component) | Generic relationship API, storage, queries, lifecycle traits and persistence contracts. |
 | [`relwind-coreserver`](relwind-coreserver) | Hytale integration: entity and block identities, Store lifecycle, player transitions, and saving. |
 | [`relwind`](relwind) | Server plugin entry point and bundled distribution JAR. |
 | [`relwind-examples`](relwind-examples) | Separate playable example plugin. |

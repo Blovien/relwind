@@ -14,7 +14,6 @@ import com.hypixel.hytale.component.StoreFixture;
 import com.hypixel.hytale.component.StoreFixture.Player;
 import com.hypixel.hytale.component.StoreFixture.Position;
 import com.hypixel.hytale.component.query.Query;
-import com.hypixel.hytale.component.Component;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -40,7 +39,7 @@ class RelationshipFetchTest {
     void fetchReturnsZeroOrManyMatchesAndReusesItsBorrowedView() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(FollowData.class, RelationshipRules.multiple());
+            var follows = types.registerRelationship(FollowData.class, RelationshipTraits.defaults());
             var alice = fixture.addEntity(new Position(1, 2), null);
             var query = RelationshipQuery.of(follows, fixture.positionType());
             var batches = new ArrayList<RelationshipResults<Object, FollowData>>();
@@ -79,7 +78,7 @@ class RelationshipFetchTest {
     void rowsExpireBeforeTheNextFetchReusesStorageForFewerMatches() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var follows = types.registerRelationship(FollowData.class, RelationshipRules.multiple());
+            var follows = types.registerRelationship(FollowData.class, RelationshipTraits.defaults());
             var alice = fixture.addEntity(new Position(1, 2), null);
             var bob = fixture.addEntity(new Position(3, 4), null);
             var carol = fixture.addEntity(new Position(5, 6), null);
@@ -129,14 +128,13 @@ class RelationshipFetchTest {
 
     @ParameterizedTest
     @EnumSource(QueryShape.class)
-    void fetchReadsTheDataComponentOfASingleTargetTypeUnderEachQueryShape(QueryShape shape) {
+    void fetchReadsTheLinkDataOfASingleTargetTypeUnderEachQueryShape(QueryShape shape) {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());
-            var saddleType = fixture.registry().registerComponent(Saddle.class, Saddle::new);
-            var mounted = types.registerRelationship(saddleType, new SaddleObserver(), RelationshipRules.single());
+            var mounted = types.registerRelationship(Saddle.class, RelationshipTraits.defaults().exclusive());
             var rider = fixture.addEntity(new Position(1, 2), null);
             var mount = fixture.addEntity(new Position(3, 4), new Player("mount"));
-            var saddle = new Saddle();
+            var saddle = new Saddle(1);
             relationships.addTarget(fixture.store(), rider, mounted, mount, saddle);
 
             relationships.fetch(rider, query(shape, fixture, mounted), matches -> {
@@ -265,7 +263,7 @@ class RelationshipFetchTest {
 
     private static Chain chain(StoreFixture fixture, String id, int links) {
         var types = new RelationshipTypeRegistry<>(fixture.registry());
-        var type = types.registerRelationship(id, RelationshipRules.multiple());
+        var type = types.registerRelationship(id, RelationshipTraits.defaults());
         var entities = new ArrayList<Ref<Object>>(links + 1);
         entities.add(fixture.addEntity(new Position(0, 0), null));
         for (int i = 1; i <= links; i++) {
@@ -292,18 +290,6 @@ class RelationshipFetchTest {
     private record FollowData(String distance) {
     }
 
-    /// Link data of a single target type, carried by a component on the source.
-    private static final class Saddle implements Component<Object> {
-        private int seat;
-
-        @Override
-        public Saddle clone() {
-            var copy = new Saddle();
-            copy.seat = seat;
-            return copy;
-        }
-    }
-
-    private static final class SaddleObserver extends RelationshipDataObserver<Object, Saddle> {
+    private record Saddle(int seat) {
     }
 }

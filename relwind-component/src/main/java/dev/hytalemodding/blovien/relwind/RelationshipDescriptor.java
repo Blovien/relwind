@@ -7,8 +7,6 @@
 package dev.hytalemodding.blovien.relwind;
 
 import com.hypixel.hytale.codec.Codec;
-import com.hypixel.hytale.component.Component;
-import com.hypixel.hytale.component.ComponentType;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -21,14 +19,12 @@ record RelationshipDescriptor<TARGET, LINK_DATA>(
     @Nullable String id,
     @Nullable RelationshipTypeRegistry<TARGET> targetTypes,
     Class<LINK_DATA> linkDataClass,
-    @Nullable ComponentType<?, ?> rawDataComponentType,
-    @Nullable RelationshipDataObserver<?, ?> rawDataObserver,
     @Nullable Codec<LINK_DATA> codec,
-    RelationshipRules rules
+    RelationshipTraits traits
 ) {
     RelationshipDescriptor {
         Objects.requireNonNull(linkDataClass, "linkDataClass");
-        Objects.requireNonNull(rules, "rules");
+        Objects.requireNonNull(traits, "traits");
     }
 
     /// True when the type has an id, because only a named type is saved.
@@ -36,39 +32,31 @@ record RelationshipDescriptor<TARGET, LINK_DATA>(
         return id != null;
     }
 
-    /// Null when the link data lives in the outgoing storage instead of a component.
-    @Nullable @SuppressWarnings("unchecked")
-    <ECS_TYPE> ComponentType<ECS_TYPE, Component<ECS_TYPE>> getDataComponentType() {
-        return (ComponentType<ECS_TYPE, Component<ECS_TYPE>>) rawDataComponentType;
+    boolean isExclusive() {
+        return traits.isExclusive();
     }
 
-    @Nullable @SuppressWarnings("unchecked")
-    <ECS_TYPE> RelationshipDataObserver<ECS_TYPE, Component<ECS_TYPE>> getDataObserver() {
-        return (RelationshipDataObserver<ECS_TYPE, Component<ECS_TYPE>>) rawDataObserver;
+    boolean isSymmetric() {
+        return traits.isSymmetric();
     }
 
     @Nonnull
-    RelationshipRules.Cardinality getCardinality() {
-        return rules.getCardinality();
+    RelationshipTraits.Survival getTransfer() {
+        return traits.getTransfer();
     }
 
     @Nonnull
-    RelationshipRules.Survival getTransfer() {
-        return rules.getTransfer();
+    RelationshipTraits.Survival getTemporaryDeactivation() {
+        return traits.getTemporaryDeactivation();
     }
 
     @Nonnull
-    RelationshipRules.Survival getTemporaryDeactivation() {
-        return rules.getTemporaryDeactivation();
+    RelationshipTraits.OnDeleteTarget getOnDeleteTarget() {
+        return traits.getOnDeleteTarget();
     }
 
     @Nonnull
-    RelationshipRules.TargetDeletion getTargetDeletion() {
-        return rules.getTargetDeletion();
-    }
-
-    @Nonnull
-    RelationshipRules.SourceRetention getSourceRetention() {
-        return rules.getSourceRetention();
+    RelationshipTraits.SourceRetention getSourceRetention() {
+        return traits.getSourceRetention();
     }
 }

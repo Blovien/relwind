@@ -18,7 +18,6 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.codec.ExtraInfo;
-import com.hypixel.hytale.component.Component;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
 import org.bson.BsonString;
@@ -50,7 +49,7 @@ class RelationshipHolderReadTest {
         try (var fixture = new Fixture()) {
             var type = fixture.types.registerRelationship(
                 "relwind:holder/void",
-                RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+                RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
             var source = fixture.entity();
             var available = fixture.entity();
             var unavailable = fixture.entity();
@@ -83,9 +82,9 @@ class RelationshipHolderReadTest {
     void holderLookupSurvivesTheRemovalOfAnotherTypeAndTheReturnOfItsSource(boolean close) {
         try (var fixture = new Fixture()) {
             var first = fixture.types.registerRelationship(
-                RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+                RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
             var second = fixture.types.registerRelationship(
-                RelationshipRules.single().retainOnTransfer().retainOnDeactivation());
+                RelationshipTraits.defaults().exclusive().retainOnTransfer().retainOnDeactivation());
             var source = fixture.entity();
             var left = fixture.entity();
             var right = fixture.entity();
@@ -233,7 +232,7 @@ class RelationshipHolderReadTest {
         try (var fixture = new Fixture()) {
             var type = fixture.types.registerRelationship(
                 "relwind:holder/cleanup",
-                RelationshipRules.multiple().retainOnDeactivation());
+                RelationshipTraits.defaults().retainOnDeactivation());
             var source = fixture.entity();
             var target = fixture.entity();
             relationships.addTarget(fixture.store, source, type, target);
@@ -317,7 +316,7 @@ class RelationshipHolderReadTest {
         try (var fixture = new Fixture()) {
             var type = fixture.types.registerRelationship(
                 BsonDocument.class,
-                RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+                RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
             var source = fixture.entity();
             var target = fixture.entity();
             var data = BsonDocument.parse("{value: 7}");
@@ -403,49 +402,12 @@ class RelationshipHolderReadTest {
         }
     }
 
-    @Test
-    void aRetainedLinkOfAParkedSourceReadsItsDataComponentFromThatHolder() {
-        try (var fixture = new Fixture()) {
-            var saddleType = fixture.registry.registerComponent(Saddle.class, Saddle::new);
-            var type = fixture.types.registerRelationship(
-                saddleType,
-                new SaddleObserver(),
-                RelationshipRules.single().retainOnDeactivation());
-            var source = fixture.entity();
-            var target = fixture.entity();
-            var saddle = new Saddle();
-            relationships.addTarget(fixture.store, source, type, target, saddle);
-            var holder = fixture.park(source, false);
-            assertSame(saddle, holder.getComponent(saddleType));
-            var read = new ArrayList<Object>();
-
-            fixture.tracker.readHolderLinks(type, holder, fixture.store, (linkedEntity, data) -> {
-                assertSame(target, linkedEntity);
-                read.add(data);
-            });
-
-            assertEquals(List.of(saddle), read);
-        }
-    }
-
-    /// Link data of a single target type, carried by a component on the source.
-    private static final class Saddle implements Component<Object> {
-        private int seat;
-
-        @Override
-        public Saddle clone() {
-            var copy = new Saddle();
-            copy.seat = seat;
-            return copy;
-        }
-    }
-
     private static GenericRelationshipType<Object, Object, HolderData> register(
         RelationshipTypeRegistry<Object> types,
         Codec<HolderData> codec
     ) {
         return types.registerRelationship("relwind:holder/data", HolderData.class, codec,
-            RelationshipRules.multiple().retainOnTransfer().retainOnDeactivation());
+            RelationshipTraits.defaults().retainOnTransfer().retainOnDeactivation());
     }
 
     private static ArrayList<Object> readRepeatedly(
@@ -548,8 +510,5 @@ class RelationshipHolderReadTest {
             tracker.close();
             registry.shutdown();
         }
-    }
-
-    private static final class SaddleObserver extends RelationshipDataObserver<Object, Saddle> {
     }
 }

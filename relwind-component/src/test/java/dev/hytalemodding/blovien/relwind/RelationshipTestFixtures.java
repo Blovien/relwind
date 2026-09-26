@@ -264,8 +264,7 @@ final class RelationshipTestFixtures {
         return types;
     }
 
-    /// The Hytale chunk store never deletes a linked entity. A block-sourced type cannot declare
-    /// `cascadeSource()`.
+    /// A block sourced type cannot declare `onDeleteTarget(DELETE)`.
     static RelationshipTypeRegistry<Blocks> blockTypes(BridgeStoreFixture fixture) {
         var types = new RelationshipTypeRegistry<>(fixture.blockRegistry());
         types.installTracker(new TestPersistenceIdentity<>((store, ref) -> null, Codec.INTEGER,

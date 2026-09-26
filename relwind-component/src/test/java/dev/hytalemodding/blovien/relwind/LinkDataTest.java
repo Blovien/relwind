@@ -13,7 +13,6 @@ import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.component.AddReason;
 import com.hypixel.hytale.component.Archetype;
 import com.hypixel.hytale.component.CommandBuffer;
-import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentRegistry;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.EmptyResourceStorage;
@@ -23,6 +22,7 @@ import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.component.system.RefChangeSystem;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.params.provider.EnumSource;
 
 import javax.annotation.Nonnull;
@@ -255,7 +255,7 @@ class LinkDataTest {
                 "relwind:test/logical-notifications",
                 MutableData.class,
                 null,
-                RelationshipRules.multiple().retainSourceStorage());
+                RelationshipTraits.defaults().retainSourceStorage());
             var oracle = new CallbackStateOracle(type);
             registry.registerSystem(oracle);
             var store = registry.addStore(new Object(), EmptyResourceStorage.get());
@@ -307,9 +307,9 @@ class LinkDataTest {
     }
 
     @ParameterizedTest
-    @EnumSource(RelationshipRules.Cardinality.class)
-    void putAnnouncesEveryDataChangeEvenForTheSameInstance(RelationshipRules.Cardinality cardinality) {
-        try (var fixture = new SignalFixture(rules(cardinality))) {
+    @ValueSource(booleans = {true, false})
+    void putAnnouncesEveryDataChangeEvenForTheSameInstance(boolean exclusive) {
+        try (var fixture = new SignalFixture(traits(exclusive))) {
             var source = fixture.add();
             var target = fixture.add();
             var initial = signalData(1);
@@ -340,37 +340,20 @@ class LinkDataTest {
         }
     }
 
-    private static RelationshipRules rules(RelationshipRules.Cardinality cardinality) {
-        return cardinality == RelationshipRules.Cardinality.SINGLE_TARGET
-            ? RelationshipRules.single()
-            : RelationshipRules.multiple();
+    private static RelationshipTraits traits(boolean exclusive) {
+        return exclusive
+            ? RelationshipTraits.defaults().exclusive()
+            : RelationshipTraits.defaults();
     }
 
     @Test
-    void addAttachesTheDataComponentToTheSource() {
-        try (var fixture = new MountFixture()) {
-            var rider = fixture.add();
-            var mount = fixture.add();
-            var saddle = mountData(1);
-
-            relationships.addTarget(fixture.store, rider, fixture.type, mount, saddle);
-
-            assertSame(saddle, fixture.attached(rider));
-            assertNotNull(fixture.store.getComponent(rider, fixture.type.getSourceType()));
-            assertSame(saddle, relationships.getData(rider, fixture.type, mount));
-            assertEquals(List.of("added"), fixture.observer.kinds());
-        }
-    }
-
-    @Test
-    void addWithoutDataAttachesNoDataComponent() {
+    void addWithoutDataAnnouncesTheAdditionWithoutData() {
         try (var fixture = new MountFixture()) {
             var walker = fixture.add();
             var mount = fixture.add();
 
             relationships.addTarget(fixture.store, walker, fixture.type, mount);
 
-            assertNull(fixture.attached(walker));
             assertNotNull(fixture.store.getComponent(walker, fixture.type.getSourceType()));
             assertEquals(List.of("added"), fixture.observer.kinds());
             assertNull(fixture.observer.deliveries.get(0).data());
@@ -378,58 +361,17 @@ class LinkDataTest {
     }
 
     @Test
-    void putReplacesTheDataComponentAndAnnouncesTheOldAndTheNewInstance() {
-        try (var fixture = new MountFixture()) {
-            var rider = fixture.add();
-            var mount = fixture.add();
-            var initial = mountData(1);
-            var replacement = mountData(2);
-            relationships.addTarget(fixture.store, rider, fixture.type, mount, initial);
-            fixture.observer.deliveries.clear();
-            int marks = fixture.persistenceMarks;
-
-            relationships.putTarget(fixture.store, rider, fixture.type, mount, replacement);
-
-            assertSame(replacement, fixture.attached(rider));
-            assertEquals(List.of("set"), fixture.observer.kinds());
-            assertSame(initial, fixture.observer.deliveries.get(0).oldData());
-            assertSame(replacement, fixture.observer.deliveries.get(0).data());
-            assertEquals(marks + 1, fixture.persistenceMarks);
-        }
-    }
-
-    @Test
-    void putOfTheHeldDataComponentAnnouncesThatInstanceOnBothSides() {
-        try (var fixture = new MountFixture()) {
-            var rider = fixture.add();
-            var mount = fixture.add();
-            var saddle = mountData(1);
-            relationships.addTarget(fixture.store, rider, fixture.type, mount, saddle);
-            fixture.observer.deliveries.clear();
-
-            saddle.seat = 7;
-            relationships.putTarget(fixture.store, rider, fixture.type, mount, saddle);
-
-            assertEquals(List.of("set"), fixture.observer.kinds());
-            assertSame(saddle, fixture.observer.deliveries.get(0).oldData());
-            assertSame(saddle, fixture.observer.deliveries.get(0).data());
-            assertSame(saddle, fixture.attached(rider));
-        }
-    }
-
-    @Test
-    void retargetKeepsTheDataComponentInstanceAndAnnouncesOneRetarget() {
+    void retargetKeepsTheLinkDataInstanceAndAnnouncesOneRetarget() {
         try (var fixture = new MountFixture()) {
             var rider = fixture.add();
             var mount = fixture.add();
             var spareMount = fixture.add();
-            var saddle = mountData(1);
+            var saddle = new MountData(1);
             relationships.addTarget(fixture.store, rider, fixture.type, mount, saddle);
             fixture.observer.deliveries.clear();
 
             relationships.retarget(fixture.store, rider, fixture.type, mount, spareMount);
 
-            assertSame(saddle, fixture.attached(rider));
             assertSame(saddle, relationships.getData(rider, fixture.type, spareMount));
             assertNull(relationships.getData(rider, fixture.type, mount));
             assertEquals(List.of("retargeted"), fixture.observer.kinds());
@@ -439,17 +381,16 @@ class LinkDataTest {
 
     @ParameterizedTest
     @EnumSource(Removal.class)
-    void removingTheTargetDetachesTheOutgoingLinkAndTheDataComponent(Removal removal) {
+    void removingTheTargetDetachesTheOutgoingLinkAndAnnouncesItsData(Removal removal) {
         try (var fixture = new MountFixture()) {
             var rider = fixture.add();
             var mount = fixture.add();
-            var saddle = mountData(1);
+            var saddle = new MountData(1);
             relationships.addTarget(fixture.store, rider, fixture.type, mount, saddle);
             fixture.observer.deliveries.clear();
 
             remove(removal, fixture, rider, mount);
 
-            assertNull(fixture.attached(rider));
             assertNull(fixture.store.getComponent(rider, fixture.type.getSourceType()));
             assertEquals(List.of("removed"), fixture.observer.kinds());
             assertSame(saddle, fixture.observer.deliveries.get(0).data());
@@ -470,25 +411,18 @@ class LinkDataTest {
     }
 
     @Test
-    void retainedSourceStorageKeepsOnlyTheEmptyOutgoingLink() {
-        try (var fixture = new MountFixture(RelationshipRules.single().retainSourceStorage())) {
+    void retainedSourceStorageKeepsAnEmptyOutgoingLink() {
+        try (var fixture = new MountFixture(RelationshipTraits.defaults().exclusive().retainSourceStorage())) {
             var rider = fixture.add();
             var mount = fixture.add();
-            relationships.addTarget(fixture.store, rider, fixture.type, mount, mountData(1));
+            relationships.addTarget(fixture.store, rider, fixture.type, mount, new MountData(1));
 
             relationships.removeTarget(fixture.store, rider, fixture.type, mount);
 
             var outgoing = fixture.store.getComponent(rider, fixture.type.getSourceType());
             assertNotNull(outgoing);
             assertEquals(0, outgoing.size());
-            assertNull(fixture.attached(rider));
         }
-    }
-
-    private static MountData mountData(int seat) {
-        var data = new MountData();
-        data.seat = seat;
-        return data;
     }
 
     private static SignalData signalData(int value) {
@@ -527,7 +461,7 @@ class LinkDataTest {
                 "relwind:test/link-data",
                 MutableData.class,
                 null,
-                RelationshipRules.multiple());
+                RelationshipTraits.defaults());
             changes = new DataChanges(type);
             registry.registerSystem(changes);
             store = registry.addStore(new Object(), EmptyResourceStorage.get());
@@ -589,13 +523,13 @@ class LinkDataTest {
         private final Store<Object> store;
         private int persistenceMarks;
 
-        private SignalFixture(RelationshipRules cardinality) {
+        private SignalFixture(RelationshipTraits traits) {
             installation = RelationshipInstallation.on(registry, identities::get, Codec.UUID_BINARY)
                 .persistence((ignoredStore, ignoredSource) -> persistenceMarks++,
                     ignoredHolder -> { }, ignoredId -> false)
                 .install();
             type = installation.types().registerRelationship(
-                "relwind:test/put-signal", SignalData.class, SignalData.CODEC, cardinality);
+                "relwind:test/put-signal", SignalData.class, SignalData.CODEC, traits);
             observer = new SetRecorder(type);
             registry.registerSystem(observer);
             store = registry.addStore(new Object(), EmptyResourceStorage.get());
@@ -616,21 +550,7 @@ class LinkDataTest {
         }
     }
 
-
-    static final class MountData implements Component<Object> {
-        static final BuilderCodec<MountData> CODEC = BuilderCodec.builder(MountData.class, MountData::new)
-            .append(new KeyedCodec<>("Seat", Codec.INTEGER), (data, seat) -> data.seat = seat, data -> data.seat)
-            .add()
-            .build();
-
-        int seat;
-
-        @Override
-        public MountData clone() {
-            var copy = new MountData();
-            copy.seat = seat;
-            return copy;
-        }
+    private record MountData(int seat) {
     }
 
     private record MountDelivery(String kind, Ref<Object> source, Ref<Object> target, MountData oldData, MountData data) {
@@ -694,49 +614,29 @@ class LinkDataTest {
         }
     }
 
-    /// A single target type whose link data lives in a component on the source.
     private static final class MountFixture implements AutoCloseable {
         private final ComponentRegistry<Object> registry = new ComponentRegistry<>();
-        private final IdentityHashMap<Ref<Object>, UUID> identities = new IdentityHashMap<>();
-        private final RelationshipInstallation<UUID> installation;
-        private final ComponentType<Object, MountData> dataType;
         private final RelationshipType<Object, MountData> type;
         private final MountRecorder observer;
         private final Store<Object> store;
-        private int persistenceMarks;
 
         private MountFixture() {
-            this(RelationshipRules.single());
+            this(RelationshipTraits.defaults().exclusive());
         }
 
-        private MountFixture(RelationshipRules policies) {
-            installation = RelationshipInstallation.on(registry, identities::get, Codec.UUID_BINARY)
-                .persistence((ignoredStore, ignoredSource) -> persistenceMarks++,
-                    ignoredHolder -> { }, ignoredId -> false)
-                .install();
-            dataType = registry.registerComponent(MountData.class, "RelwindTestMount", MountData.CODEC);
-            type = installation.types().registerRelationship(
-                "relwind:test/mounted", dataType, new MountObserver(), policies);
+        private MountFixture(RelationshipTraits traits) {
+            type = new RelationshipTypeRegistry<>(registry).registerRelationship(MountData.class, traits);
             observer = new MountRecorder(type);
             registry.registerSystem(observer);
             store = registry.addStore(new Object(), EmptyResourceStorage.get());
         }
 
         private Ref<Object> add() {
-            var ref = Objects.requireNonNull(store.addEntity(Archetype.empty(), AddReason.SPAWN));
-            var id = UUID.randomUUID();
-            identities.put(ref, id);
-            installation.tracker().onEntityLoaded(id, ref);
-            return ref;
-        }
-
-        private MountData attached(Ref<Object> source) {
-            return store.getComponent(source, dataType);
+            return Objects.requireNonNull(store.addEntity(Archetype.empty(), AddReason.SPAWN));
         }
 
         @Override
         public void close() {
-            installation.tracker().close();
             registry.shutdown();
         }
     }
@@ -930,8 +830,5 @@ class LinkDataTest {
                 assertEquals(expected.size(), relationships.getTargetCount(source, type));
             }
         }
-    }
-
-    private static final class MountObserver extends RelationshipDataObserver<Object, MountData> {
     }
 }
