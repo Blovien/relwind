@@ -236,17 +236,34 @@ class RelationshipQueryTest {
 
                 var query = RelationshipQuery.of(outer,
                     RelationshipQuery.reachable(type, direction, hops, fixture.playerType()));
-                for (int i = 0; i < 10_000; i++) relationships.fetch(anchor, query, results -> null);
+                runReachableSearches(anchor, query, 10_000);
                 var bean = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
                 assertTrue(bean.isThreadAllocatedMemorySupported());
                 bean.setThreadAllocatedMemoryEnabled(true);
                 long thread = Thread.currentThread().threadId();
-                long before = bean.getThreadAllocatedBytes(thread);
-                for (int i = 0; i < iterations; i++) assertEquals(1, (int) relationships.fetch(anchor, query, results -> results.size()));
-                return bean.getThreadAllocatedBytes(thread) - before;
+                long minimum = Long.MAX_VALUE;
+                // HotSpot compilation is asynchronous. A constrained runner can finish compiling during
+                // the first measured batch even after the fixed warmup. A real per-hop allocation remains
+                // in every batch, while taking the minimum excludes that one-time compiler transition.
+                for (int sample = 0; sample < 5; sample++) {
+                    long before = bean.getThreadAllocatedBytes(thread);
+                    runReachableSearches(anchor, query, iterations);
+                    minimum = Math.min(minimum, bean.getThreadAllocatedBytes(thread) - before);
+                }
+                return minimum;
             } finally {
                 tracker.close();
             }
+        }
+    }
+
+    private static void runReachableSearches(
+        Ref<Object> anchor,
+        RelationshipQuery.Definition<Object, Void> query,
+        int iterations
+    ) {
+        for (int i = 0; i < iterations; i++) {
+            assertEquals(1, (int) relationships.fetch(anchor, query, results -> results.size()));
         }
     }
 
