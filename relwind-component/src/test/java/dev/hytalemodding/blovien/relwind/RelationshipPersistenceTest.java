@@ -373,8 +373,8 @@ class RelationshipPersistenceTest {
             var incoming = new ArrayList<Ref<?>>();
 
             var present = relationships.hasTarget(source, type, target);
-            relationships.forEachLink(source, (visitedType, visitedTarget, data) -> outgoing.add(visitedTarget));
-            relationships.forEachIncomingLink(target, (visitedType, visitedSource, data) -> incoming.add(visitedSource));
+            relationships.forEachLinkAny(source, (visitedType, visitedTarget, data) -> outgoing.add(visitedTarget));
+            relationships.forEachIncomingLinkAny(target, (visitedType, visitedSource, data) -> incoming.add(visitedSource));
 
             assertEquals(false, present);
             assertEquals(List.of(), outgoing);

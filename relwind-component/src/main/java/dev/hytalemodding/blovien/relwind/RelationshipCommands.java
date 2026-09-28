@@ -72,8 +72,8 @@ final class RelationshipCommands {
         Object targetId = source == target ? sourceId
             : targetIdentity(targetTracker(sourceTracker, targetStore, same), targetStore, target, same);
         validateIdentities(type, source, target, sourceTracker, same, sourceId, targetId, false);
-        var sourceCommand = RelationshipAccessSystem.forStoreCommand(sourceStore);
-        var targetCommand = RelationshipAccessSystem.forStoreCommand(targetStore);
+        var sourceCommand = sourceCommand(type, sourceStore);
+        var targetCommand = targetCommand(type, targetStore, same, sourceCommand);
         assertFree(sourceCommand, targetCommand, sourceStore, targetStore, same);
         if (sourceTracker != null
             && sourceTracker.hasUnresolvedLink(type, source, target, sourceId, targetId)) {
@@ -113,17 +113,22 @@ final class RelationshipCommands {
         RelationshipProcessingTracker sourceCommand,
         RelationshipProcessingTracker targetCommand
     ) {
-        Runnable storage = () ->
-            RelationshipStorage.attachLink(sourceStore, targetStore, type, source, target, data);
-        Runnable record = () ->
-            recordLinked(type, source, targetId, data, sourceTracker);
-        Runnable announcement = () -> {
-            if (same && notifyChanges) {
-                onChanged(sourceStore, type,
-                    RelationshipChangeSystem.Kind.ADDED, source, sourceId, target, targetId, null, null, null, data);
+        sourceCommand.beginMutation();
+        try {
+            if (!same) targetCommand.beginMutation();
+            try {
+                RelationshipStorage.attachLink(sourceStore, targetStore, type, source, target, data);
+                recordLinked(type, source, targetId, data, sourceTracker);
+            } finally {
+                if (!same) targetCommand.endMutation();
             }
-        };
-        finish(sourceCommand, targetCommand, same, storage, record, announcement);
+        } finally {
+            sourceCommand.endMutation();
+        }
+        if (same && notifyChanges) {
+            onChanged(sourceStore, type,
+                RelationshipChangeSystem.Kind.ADDED, source, sourceId, target, targetId, null, null, null, data);
+        }
     }
 
     static <SOURCE, TARGET, LINK_DATA> void put(
@@ -169,8 +174,8 @@ final class RelationshipCommands {
         Object targetId = source == target ? sourceId
             : targetIdentity(targetTracker(sourceTracker, targetStore, same), targetStore, target, same);
         validateIdentities(type, source, target, sourceTracker, same, sourceId, targetId, true);
-        var sourceCommand = RelationshipAccessSystem.forStoreCommand(sourceStore);
-        var targetCommand = RelationshipAccessSystem.forStoreCommand(targetStore);
+        var sourceCommand = sourceCommand(type, sourceStore);
+        var targetCommand = targetCommand(type, targetStore, same, sourceCommand);
         assertFree(sourceCommand, targetCommand, sourceStore, targetStore, same);
         if (type.getDescriptor().isSymmetric()) {
             symmetricCommand(sourceStore, type, sourceTracker)
@@ -297,8 +302,8 @@ final class RelationshipCommands {
         Object targetId = source == target ? sourceId
             : targetIdentity(targetTracker(sourceTracker, targetStore, same), targetStore, target, same);
         validateIdentities(type, source, target, sourceTracker, same, sourceId, targetId, false);
-        var sourceCommand = RelationshipAccessSystem.forStoreCommand(sourceStore);
-        var targetCommand = RelationshipAccessSystem.forStoreCommand(targetStore);
+        var sourceCommand = sourceCommand(type, sourceStore);
+        var targetCommand = targetCommand(type, targetStore, same, sourceCommand);
         assertFree(sourceCommand, targetCommand, sourceStore, targetStore, same);
         if (maintainTwins) {
             symmetricCommand(sourceStore, type, sourceTracker)
@@ -313,21 +318,26 @@ final class RelationshipCommands {
             throw newMissingLinkException(type);
         }
         LINK_DATA data = RelationshipStorage.getLinkDataOf(type, target, outgoing);
-        Runnable storage = () -> {
-            RelationshipStorage.removeIncoming(targetStore, type, source, target);
-            RelationshipStorage.removeOutgoingTarget(sourceStore, type, source, target, outgoing);
-        };
-        Runnable record = () -> {
-            var persistence = (RelationshipPersistence) type.getRelationshipTypeRegistry().getPersistence();
-            syncPersistence(type, source, targetId, false, null, sourceTracker, persistence);
-        };
-        Runnable announcement = () -> {
-            if (same && notifyChanges) {
-                onChanged(sourceStore, type,
-                    RelationshipChangeSystem.Kind.REMOVED, source, sourceId, target, targetId, null, null, null, data);
+        sourceCommand.beginMutation();
+        try {
+            if (!same) targetCommand.beginMutation();
+            try {
+                RelationshipStorage.removeIncoming(targetStore, type, source, target);
+                RelationshipStorage.removeOutgoingTarget(sourceStore, type, source, target, outgoing);
+                if (sourceTracker != null) {
+                    var persistence = (RelationshipPersistence) type.getRelationshipTypeRegistry().getPersistence();
+                    syncPersistence(type, source, targetId, false, null, sourceTracker, persistence);
+                }
+            } finally {
+                if (!same) targetCommand.endMutation();
             }
-        };
-        finish(sourceCommand, targetCommand, same, storage, record, announcement);
+        } finally {
+            sourceCommand.endMutation();
+        }
+        if (same && notifyChanges) {
+            onChanged(sourceStore, type,
+                RelationshipChangeSystem.Kind.REMOVED, source, sourceId, target, targetId, null, null, null, data);
+        }
     }
 
     static <SOURCE, TARGET, LINK_DATA> void clearTargets(
@@ -385,8 +395,8 @@ final class RelationshipCommands {
             ? (Store<TARGET>) sourceStore : outgoing.getTarget(0).getStore();
         boolean same = sourceStore == targetStore;
         boolean announce = type.getExpectedTargetRegistry() == sourceStore.getRegistry();
-        var sourceCommand = RelationshipAccessSystem.forStoreCommand(sourceStore);
-        var targetCommand = RelationshipAccessSystem.forStoreCommand(targetStore);
+        var sourceCommand = sourceCommand(type, sourceStore);
+        var targetCommand = targetCommand(type, targetStore, same, sourceCommand);
         assertFree(sourceCommand, targetCommand, sourceStore, targetStore, same);
         var tracker = (RelationshipTracker<SOURCE, ?>) sourceTracker;
         Object sourceId = tracker == null ? null : tracker.getIdentity(source);
@@ -511,8 +521,8 @@ final class RelationshipCommands {
             : targetIdentity(targetTracker, targetStore, newTarget, same);
         validateIdentities(type, source, oldTarget, sourceTracker, same, sourceId, oldTargetId, false);
         validateIdentities(type, source, newTarget, sourceTracker, same, sourceId, newTargetId, false);
-        var sourceCommand = RelationshipAccessSystem.forStoreCommand(sourceStore);
-        var targetCommand = RelationshipAccessSystem.forStoreCommand(targetStore);
+        var sourceCommand = sourceCommand(type, sourceStore);
+        var targetCommand = targetCommand(type, targetStore, same, sourceCommand);
         assertFree(sourceCommand, targetCommand, sourceStore, targetStore, same);
         if (oldTarget == newTarget) {
             return;
@@ -745,7 +755,7 @@ final class RelationshipCommands {
         }
 
         private void finish() {
-            var command = RelationshipAccessSystem.forStoreCommand(store);
+            var command = sourceCommand(type, store);
             RelationshipCommands.finish(command, command, true,
                 () -> storage.forEach(Runnable::run),
                 () -> records.forEach(Runnable::run),
@@ -813,6 +823,22 @@ final class RelationshipCommands {
             targetCommand.assertNotProcessing();
             targetStore.assertWriteProcessing();
         }
+    }
+
+    private static <SOURCE, TARGET> RelationshipProcessingTracker sourceCommand(
+        GenericRelationshipType<SOURCE, TARGET, ?> type,
+        Store<SOURCE> sourceStore
+    ) {
+        return type.getRelationshipTypeRegistry().getProcessingTracker(sourceStore);
+    }
+
+    private static <SOURCE, TARGET> RelationshipProcessingTracker targetCommand(
+        GenericRelationshipType<SOURCE, TARGET, ?> type,
+        Store<TARGET> targetStore,
+        boolean same,
+        RelationshipProcessingTracker sourceCommand
+    ) {
+        return same ? sourceCommand : type.getTargetRelationshipTypeRegistry().getProcessingTracker(targetStore);
     }
 
     /// Runs the storage update and the record under the command mutation brackets, then announces.
@@ -933,8 +959,10 @@ final class RelationshipCommands {
         @Nullable LINK_DATA data,
         @Nullable RelationshipTracker<?, ?> sourceTracker
     ) {
-        syncPersistence(type, source, targetId, true, data, sourceTracker,
-            type.getRelationshipTypeRegistry().getPersistence());
+        if (sourceTracker != null) {
+            syncPersistence(type, source, targetId, true, data, sourceTracker,
+                type.getRelationshipTypeRegistry().getPersistence());
+        }
     }
 
     @Nullable

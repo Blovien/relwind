@@ -30,8 +30,9 @@ final class RelationshipAccessSystem<ECS_TYPE> extends System<ECS_TYPE> {
         new ConcurrentHashMap<>();
     private final List<RelationshipTypeRegistry<ECS_TYPE>> holders = new CopyOnWriteArrayList<>();
     private final ResourceType<ECS_TYPE, RelationshipAccessResource<ECS_TYPE>> resourceType;
+    private volatile boolean removed;
     @Nullable
-    private RelationshipTracker<ECS_TYPE, ?> tracker;
+    private volatile RelationshipTracker<ECS_TYPE, ?> tracker;
 
     private RelationshipAccessSystem() {
         resourceType = registerResource(RelationshipAccessResource.class, RelationshipAccessResource::new);
@@ -85,6 +86,14 @@ final class RelationshipAccessSystem<ECS_TYPE> extends System<ECS_TYPE> {
     @Nonnull
     static <ECS_TYPE> RelationshipAccessResource<ECS_TYPE> forStore(Store<ECS_TYPE> store) {
         return store.getResource(install(store.getRegistry()).resourceType);
+    }
+
+    @Nonnull
+    RelationshipAccessResource<ECS_TYPE> resourceFor(Store<ECS_TYPE> store) {
+        if (removed) {
+            return forStore(store);
+        }
+        return store.getResource(resourceType);
     }
 
     @Nonnull
@@ -188,7 +197,7 @@ final class RelationshipAccessSystem<ECS_TYPE> extends System<ECS_TYPE> {
     }
 
     @Nullable
-    synchronized RelationshipTracker<ECS_TYPE, ?> getCurrentTracker() {
+    RelationshipTracker<ECS_TYPE, ?> getCurrentTracker() {
         return tracker;
     }
 
@@ -201,6 +210,7 @@ final class RelationshipAccessSystem<ECS_TYPE> extends System<ECS_TYPE> {
 
     @Override
     public synchronized void onSystemUnregistered() {
+        removed = true;
         tracker = null;
     }
 }

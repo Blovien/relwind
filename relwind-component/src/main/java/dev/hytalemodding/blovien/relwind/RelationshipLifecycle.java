@@ -35,7 +35,7 @@ final class RelationshipLifecycle {
         if (source != detached && target != detached) {
             throw new IllegalArgumentException("Detached reference is not a linked entity of this relationship");
         }
-        var command = RelationshipAccessSystem.forStoreCommand(store);
+        var command = type.getRelationshipTypeRegistry().getProcessingTracker(store);
         // no record update and no announcement here, because the tracker already recorded the
         // unload and the deletion path announces it
         RelationshipCommands.finish(command, command, true,
@@ -72,15 +72,19 @@ final class RelationshipLifecycle {
         Ref<TARGET> target,
         @Nullable Object data
     ) {
-        var sourceCommand = RelationshipAccessSystem.forStoreCommand(source.getStore());
-        var targetCommand = RelationshipAccessSystem.forStoreCommand(target.getStore());
+        var sourceStore = source.getStore();
+        var targetStore = target.getStore();
+        boolean same = sourceStore == targetStore;
+        var sourceCommand = type.getRelationshipTypeRegistry().getProcessingTracker(sourceStore);
+        var targetCommand = same ? sourceCommand
+            : type.getTargetRelationshipTypeRegistry().getProcessingTracker(targetStore);
         sourceCommand.beginMutation();
         try {
-            targetCommand.beginMutation();
+            if (!same) targetCommand.beginMutation();
             try {
                 attachRestored(type, source, target, data);
             } finally {
-                targetCommand.endMutation();
+                if (!same) targetCommand.endMutation();
             }
         } finally {
             sourceCommand.endMutation();
@@ -133,7 +137,7 @@ final class RelationshipLifecycle {
         if (!outgoing.contains(deleted)) {
             return false;
         }
-        var command = RelationshipAccessSystem.forStoreCommand(sourceStore);
+        var command = type.getRelationshipTypeRegistry().getProcessingTracker(sourceStore);
         command.beginMutation();
         try {
             RelationshipStorage.removeOutgoingTarget(sourceStore, type, source, deleted, outgoing);
