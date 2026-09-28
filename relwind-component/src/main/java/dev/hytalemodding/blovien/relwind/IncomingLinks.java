@@ -47,7 +47,7 @@ final class IncomingLinks<SOURCE, TARGET> implements Component<TARGET> {
         switch (size) {
             case 0 -> source = addedSource;
             case 1 -> {
-                sources = new Ref[4];
+                if (sources == null) sources = new Ref[4];
                 sources[0] = source;
                 sources[1] = addedSource;
                 source = null;
@@ -110,7 +110,9 @@ final class IncomingLinks<SOURCE, TARGET> implements Component<TARGET> {
 
         if (size == 1) {
             source = sources[0];
-            sources = null;
+            sources[0] = null;
+            // retain only small arrays for groups that repeatedly grow from one source
+            if (sources.length > 8) sources = null;
             positions = null;
         } else if (positions != null) {
             if (found != last) {

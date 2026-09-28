@@ -166,7 +166,7 @@ public final class Relationships implements AutoCloseable {
         Objects.requireNonNull(query, "query").validateRegistry(store.getRegistry());
         query.validate();
         Objects.requireNonNull(consumer, "consumer");
-        var access = RelationshipAccessSystem.forStore(store);
+        var access = query.getRelationshipType().getRelationshipTypeRegistry().getAccessResource(store);
         access.getProcessingTracker().assertNotProcessing();
         var results = access.<LINK_DATA>borrowResults();
         try {
@@ -207,7 +207,7 @@ public final class Relationships implements AutoCloseable {
         var store = Objects.requireNonNull(source, "source").getStore();
         store.assertThread();
         Objects.requireNonNull(query, "query").getRelationshipType().validate(store);
-        var access = RelationshipAccessSystem.forStore(store);
+        var access = query.getRelationshipType().getRelationshipTypeRegistry().getAccessResource(store);
         var results = access.<LINK_DATA>borrowResults();
         try {
             RelationshipEvaluator.evaluate(store, source, query, results);
@@ -230,7 +230,7 @@ public final class Relationships implements AutoCloseable {
         var store = Objects.requireNonNull(start, "start").getStore();
         store.assertThread();
         Objects.requireNonNull(query, "query").getRelationshipType().validate(store);
-        var access = RelationshipAccessSystem.forStore(store);
+        var access = query.getRelationshipType().getRelationshipTypeRegistry().getAccessResource(store);
         var results = access.<LINK_DATA>borrowResults();
         try {
             RelationshipEvaluator.evaluate(store, start, query, results);
@@ -277,8 +277,9 @@ public final class Relationships implements AutoCloseable {
         return outgoing != null && outgoing.contains(target);
     }
 
-    /// Visits loaded outgoing links across every registered relationship type.
-    public <SOURCE> void forEachLink(Ref<SOURCE> source, LinkConsumer<SOURCE> consumer) {
+    /// Discovers loaded outgoing links across every registered relationship type. Prefer
+    /// {@link #forEachLink} when the relationship type is known.
+    public <SOURCE> void forEachLinkAny(Ref<SOURCE> source, LinkConsumer<SOURCE> consumer) {
         ensureOpen();
         var store = validateEntityRead(source);
         Objects.requireNonNull(consumer, "consumer");
@@ -289,8 +290,43 @@ public final class Relationships implements AutoCloseable {
         });
     }
 
-    /// Visits loaded incoming links, including types registered in another registry.
-    public <TARGET> void forEachIncomingLink(Ref<TARGET> target, IncomingLinkConsumer<TARGET> consumer) {
+    /// Visits loaded outgoing links of one type, providing each target and its immutable link data
+    /// together. Data may be null. Immediate relationship changes are rejected on the source Store
+    /// and, during a bridge callback, on the target Store. Nested reads are allowed.
+    public <SOURCE, TARGET, LINK_DATA> void forEachLink(
+        Ref<SOURCE> source,
+        GenericRelationshipType<SOURCE, TARGET, LINK_DATA> type,
+        BiConsumer<? super Ref<TARGET>, ? super LINK_DATA> consumer
+    ) {
+        ensureOpen();
+        validateSourceRead(type, source);
+        Objects.requireNonNull(consumer, "consumer");
+        var store = source.getStore();
+        var outgoing = store.getComponent(source, type.getSourceType());
+        if (outgoing == null) return;
+        var processing = type.getRelationshipTypeRegistry().getProcessingTracker(store);
+        var dataClass = type.getDescriptor().linkDataClass();
+        processing.beginTraversal();
+        try {
+            for (int index = 0; index < outgoing.size(); index++) {
+                var target = outgoing.getTarget(index);
+                var data = outgoing.getData(index, dataClass);
+                var targetStore = validateEntityRead(target);
+                if (targetStore == store) {
+                    consumer.accept(target, data);
+                } else {
+                    duringTraversal(type.getTargetRelationshipTypeRegistry().getProcessingTracker(targetStore),
+                        () -> consumer.accept(target, data));
+                }
+            }
+        } finally {
+            processing.endTraversal();
+        }
+    }
+
+    /// Discovers loaded incoming links across relationship types, including types registered in
+    /// another registry. Prefer {@link #forEachIncomingLink} when the relationship type is known.
+    public <TARGET> void forEachIncomingLinkAny(Ref<TARGET> target, IncomingLinkConsumer<TARGET> consumer) {
         ensureOpen();
         var store = validateEntityRead(target);
         Objects.requireNonNull(consumer, "consumer");
@@ -299,6 +335,41 @@ public final class Relationships implements AutoCloseable {
         duringTraversal(store, () -> {
             for (var type : types) visitIncoming(target, type, consumer);
         });
+    }
+
+    /// Visits loaded incoming links of one type, providing each source and its immutable link data
+    /// together. Data may be null. Immediate relationship changes are rejected on the target Store
+    /// and, during a bridge callback, on the source Store. Nested reads are allowed.
+    public <SOURCE, TARGET, LINK_DATA> void forEachIncomingLink(
+        Ref<TARGET> target,
+        GenericRelationshipType<SOURCE, TARGET, LINK_DATA> type,
+        BiConsumer<? super Ref<SOURCE>, ? super LINK_DATA> consumer
+    ) {
+        ensureOpen();
+        validateTargetRead(type, target);
+        Objects.requireNonNull(consumer, "consumer");
+        var store = target.getStore();
+        var incoming = store.getComponent(target, type.getIncomingType());
+        if (incoming == null) return;
+        var processing = type.getTargetRelationshipTypeRegistry().getProcessingTracker(store);
+        var dataClass = type.getDescriptor().linkDataClass();
+        processing.beginTraversal();
+        try {
+            for (int index = 0; index < incoming.size(); index++) {
+                var source = incoming.getSource(index);
+                var sourceStore = validateEntityRead(source);
+                var outgoing = sourceStore.getComponent(source, type.getSourceType());
+                var data = outgoing == null ? null : outgoing.getData(target, dataClass);
+                if (sourceStore == store) {
+                    consumer.accept(source, data);
+                } else {
+                    duringTraversal(type.getRelationshipTypeRegistry().getProcessingTracker(sourceStore),
+                        () -> consumer.accept(source, data));
+                }
+            }
+        } finally {
+            processing.endTraversal();
+        }
     }
 
     private static <SOURCE, TARGET> void visitOutgoing(
@@ -313,7 +384,8 @@ public final class Relationships implements AutoCloseable {
             var target = outgoing.getTarget(index);
             var data = outgoing.getData(index, Object.class);
             var targetStore = validateEntityRead(target);
-            duringTraversal(targetStore, () -> consumer.accept(type, target, data));
+            duringTraversal(type.getTargetRelationshipTypeRegistry().getProcessingTracker(targetStore),
+                () -> consumer.accept(type, target, data));
         }
     }
 
@@ -331,7 +403,8 @@ public final class Relationships implements AutoCloseable {
             var outgoing = RelationshipStorage.getOutgoing(type,
                 component -> sourceStore.getComponent(source, component));
             var data = outgoing == null ? null : outgoing.getData(target, Object.class);
-            duringTraversal(sourceStore, () -> consumer.accept(type, source, data));
+            duringTraversal(type.getRelationshipTypeRegistry().getProcessingTracker(sourceStore),
+                () -> consumer.accept(type, source, data));
         }
     }
 
@@ -346,7 +419,10 @@ public final class Relationships implements AutoCloseable {
     }
 
     private static void duringTraversal(Store<?> store, Runnable consumer) {
-        var command = RelationshipAccessSystem.forStoreCommand(store);
+        duringTraversal(RelationshipAccessSystem.forStoreCommand(store), consumer);
+    }
+
+    private static void duringTraversal(RelationshipProcessingTracker command, Runnable consumer) {
         command.beginTraversal();
         try {
             consumer.run();
@@ -398,7 +474,7 @@ public final class Relationships implements AutoCloseable {
         if (outgoing == null) {
             return;
         }
-        var command = RelationshipAccessSystem.forStoreCommand(source.getStore());
+        var command = type.getRelationshipTypeRegistry().getProcessingTracker(source.getStore());
         command.beginTraversal();
         try {
             for (int index = 0; index < outgoing.size(); index++) {
@@ -444,7 +520,7 @@ public final class Relationships implements AutoCloseable {
         if (incoming == null) {
             return;
         }
-        var command = RelationshipAccessSystem.forStoreCommand(target.getStore());
+        var command = type.getTargetRelationshipTypeRegistry().getProcessingTracker(target.getStore());
         command.beginTraversal();
         try {
             incoming.forEach(consumer);
@@ -502,7 +578,7 @@ public final class Relationships implements AutoCloseable {
 
     private static <SOURCE, TARGET> boolean trimIncomingNow(GenericRelationshipType<SOURCE, TARGET, ?> type, Ref<TARGET> target) {
         Store<TARGET> targetStore = target.getStore();
-        RelationshipAccessSystem.forStoreCommand(targetStore).assertNotProcessing();
+        type.getTargetRelationshipTypeRegistry().getProcessingTracker(targetStore).assertNotProcessing();
         targetStore.assertWriteProcessing();
         validateTargetRead(type, target);
         var incoming = targetStore.getComponent(target, type.getIncomingType());
@@ -539,7 +615,7 @@ public final class Relationships implements AutoCloseable {
 
     private static <SOURCE, TARGET> boolean trimSourceNow(GenericRelationshipType<SOURCE, TARGET, ?> type, Ref<SOURCE> source) {
         Store<SOURCE> sourceStore = source.getStore();
-        RelationshipAccessSystem.forStoreCommand(sourceStore).assertNotProcessing();
+        type.getRelationshipTypeRegistry().getProcessingTracker(sourceStore).assertNotProcessing();
         sourceStore.assertWriteProcessing();
         validateSourceRead(type, source);
         var outgoing = sourceStore.getComponent(source, type.getSourceType());

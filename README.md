@@ -17,7 +17,7 @@ Other features are the following:
 
 - **Relationship queries:** combine component and relationship conditions, select link data, and traverse reachable entities with an explicit depth limit.
 - **Wildcard conditions:** `existsAny` tests links across a registry's same-Store types. `enumerateAny` binds each matching link with its relationship type and data.
-- **Link reads:** `hasTarget` checks one loaded link. `forEachLink` and `forEachIncomingLink` visit loaded links across relationship types, including bridge types, with their type and data.
+- **Link checks:** `hasTarget` checks one loaded link.
 - **Clear targets:** `clearTargets` removes a source's loaded and away links of one type. A command buffer queues the clear until it drains.
 - **Exclusive types:** `putTarget` replaces the current target and its data, including a target that is away. `addTarget` rejects a second target.
 - **Symmetric types:** `symmetric()` keeps twin links and their data together when a command adds, changes or removes a link.

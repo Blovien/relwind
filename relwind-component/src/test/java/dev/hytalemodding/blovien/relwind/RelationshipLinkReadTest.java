@@ -27,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class RelationshipLinkReadTest {
     @ParameterizedTest
@@ -53,7 +54,7 @@ class RelationshipLinkReadTest {
     }
 
     @Test
-    void forEachLinkVisitsLoadedLinksAcrossSameStoreAndBridgeTypes() {
+    void forEachLinkAnyVisitsLoadedLinksAcrossSameStoreAndBridgeTypes() {
         try (var fixture = new Fixture()) {
             var sibling = new RelationshipTypeRegistry<>(fixture.stores.entityRegistry());
             var carries = sibling.registerRelationship(String.class, RelationshipTraits.defaults());
@@ -71,7 +72,7 @@ class RelationshipLinkReadTest {
                 fixture.follows, anotherTarget, null);
             var visited = new ArrayList<Link>();
 
-            fixture.relationships.forEachLink(fixture.source,
+            fixture.relationships.forEachLinkAny(fixture.source,
                 (type, target, data) -> visited.add(new Link(type, target, data)));
 
             assertAll(
@@ -84,19 +85,78 @@ class RelationshipLinkReadTest {
     }
 
     @Test
-    void forEachLinkVisitsNothingForASourceWithoutLinks() {
+    void forEachLinkAnyVisitsNothingForASourceWithoutLinks() {
         try (var fixture = new Fixture()) {
             var visited = new ArrayList<Link>();
 
-            fixture.relationships.forEachLink(fixture.source,
+            fixture.relationships.forEachLinkAny(fixture.source,
                 (type, target, data) -> visited.add(new Link(type, target, data)));
+            fixture.relationships.forEachLink(fixture.source, fixture.follows,
+                (target, data) -> fail("No outgoing link exists"));
 
             assertEquals(List.of(), visited);
         }
     }
 
     @Test
-    void forEachIncomingLinkIncludesTypesRegisteredInAnotherRegistry() {
+    void typedReadsSelectOneTypeAndKeepEachDataValueWithItsLinkedEntity() {
+        try (var fixture = new Fixture()) {
+            var other = fixture.entities.registerRelationship(Object.class, RelationshipTraits.defaults());
+            var secondTarget = fixture.stores.addEntity(fixture.world);
+            var secondSource = fixture.stores.addEntity(fixture.world);
+            var data = new Object();
+            fixture.relationships.addTarget(fixture.world.entityStore(), fixture.source,
+                fixture.follows, fixture.target, data);
+            fixture.relationships.addTarget(fixture.world.entityStore(), fixture.source,
+                fixture.follows, secondTarget, null);
+            fixture.relationships.addTarget(fixture.world.entityStore(), secondSource,
+                fixture.follows, fixture.target, null);
+            fixture.relationships.addTarget(fixture.world.entityStore(), fixture.source,
+                other, fixture.target, new Object());
+            var outgoing = new ArrayList<Link>();
+            var incoming = new ArrayList<Link>();
+
+            fixture.relationships.forEachLink(fixture.source, fixture.follows,
+                (target, value) -> outgoing.add(new Link(fixture.follows, target, value)));
+            fixture.relationships.forEachIncomingLink(fixture.target, fixture.follows,
+                (source, value) -> incoming.add(new Link(fixture.follows, source, value)));
+
+            assertEquals(Set.of(new Link(fixture.follows, fixture.target, data),
+                new Link(fixture.follows, secondTarget, null)), Set.copyOf(outgoing));
+            assertEquals(Set.of(new Link(fixture.follows, fixture.source, data),
+                new Link(fixture.follows, secondSource, null)), Set.copyOf(incoming));
+            assertEquals(2, outgoing.size());
+            assertEquals(2, incoming.size());
+        }
+    }
+
+    @Test
+    void nestedTypedReadsKeepSameStoreMutationsBlockedUntilTheOuterCallbackReturns() {
+        try (var fixture = new Fixture()) {
+            fixture.prepareLink(LinkState.PRESENT);
+            var failure = new IllegalArgumentException("callback failed");
+            var thrown = assertThrows(IllegalArgumentException.class, () ->
+                fixture.relationships.forEachLink(fixture.source, fixture.follows, (target, data) -> {
+                    fixture.relationships.forEachIncomingLink(target, fixture.follows, (source, value) ->
+                        assertThrows(IllegalStateException.class, () -> fixture.relationships.removeTarget(
+                            fixture.world.entityStore(), source, fixture.follows, target)));
+                    assertThrows(IllegalStateException.class, () -> fixture.relationships.removeTarget(
+                        fixture.world.entityStore(), fixture.source, fixture.follows, target));
+                    throw failure;
+                }));
+            assertSame(failure, thrown);
+            fixture.relationships.removeTarget(fixture.world.entityStore(), fixture.source,
+                fixture.follows, fixture.target);
+            assertEquals(0, fixture.relationships.getIncomingCount(fixture.target, fixture.follows));
+            fixture.relationships.forEachLink(fixture.source, fixture.follows,
+                (target, data) -> fail("The outgoing link was removed"));
+            fixture.relationships.forEachIncomingLink(fixture.target, fixture.follows,
+                (source, data) -> fail("The incoming link was removed"));
+        }
+    }
+
+    @Test
+    void forEachIncomingLinkAnyIncludesTypesRegisteredInAnotherRegistry() {
         try (var fixture = new Fixture()) {
             var sibling = new RelationshipTypeRegistry<>(fixture.stores.blockRegistry());
             var signals = sibling.registerRelationship(String.class, RelationshipTraits.defaults());
@@ -115,7 +175,7 @@ class RelationshipLinkReadTest {
                 fixture.powers, fixture.block, null);
             var visited = new ArrayList<Link>();
 
-            fixture.relationships.forEachIncomingLink(fixture.block,
+            fixture.relationships.forEachIncomingLinkAny(fixture.block,
                 (type, source, data) -> visited.add(new Link(type, source, data)));
 
             assertAll(
@@ -128,19 +188,22 @@ class RelationshipLinkReadTest {
     }
 
     @Test
-    void forEachIncomingLinkVisitsNothingForATargetWithoutLinks() {
+    void forEachIncomingLinkAnyVisitsNothingForATargetWithoutLinks() {
         try (var fixture = new Fixture()) {
             var visited = new ArrayList<Link>();
 
-            fixture.relationships.forEachIncomingLink(fixture.block,
+            fixture.relationships.forEachIncomingLinkAny(fixture.block,
                 (type, source, data) -> visited.add(new Link(type, source, data)));
+            fixture.relationships.forEachIncomingLink(fixture.block, fixture.bridge,
+                (source, data) -> fail("No incoming link exists"));
 
             assertEquals(List.of(), visited);
         }
     }
 
     @ParameterizedTest
-    @CsvSource({"OUTGOING,ENTITIES", "OUTGOING,BLOCKS", "INCOMING,ENTITIES", "INCOMING,BLOCKS"})
+    @CsvSource({"OUTGOING_ANY,ENTITIES", "OUTGOING_ANY,BLOCKS", "INCOMING_ANY,ENTITIES", "INCOMING_ANY,BLOCKS",
+        "OUTGOING,ENTITIES", "OUTGOING,BLOCKS", "INCOMING,ENTITIES", "INCOMING,BLOCKS"})
     void bridgeConsumersRejectCommandsOnEitherStore(Direction direction, Side side) {
         try (var fixture = new Fixture()) {
             fixture.linkBridge();
@@ -201,9 +264,9 @@ class RelationshipLinkReadTest {
     }
 
     private enum LinkState { ABSENT, PRESENT, REMOVED }
-    private enum Direction { OUTGOING, INCOMING }
+    private enum Direction { OUTGOING, INCOMING, OUTGOING_ANY, INCOMING_ANY }
     private enum Side { ENTITIES, BLOCKS }
-    private enum Read { HAS_TARGET, OUTGOING, INCOMING }
+    private enum Read { HAS_TARGET, OUTGOING, INCOMING, OUTGOING_ANY, INCOMING_ANY }
     private record Link(GenericRelationshipType<?, ?, ?> type, Ref<?> linked, Object data) { }
 
     private static final class Fixture implements AutoCloseable {
@@ -218,6 +281,7 @@ class RelationshipLinkReadTest {
             blocks.registerRelationship(Object.class, RelationshipTraits.defaults());
         private final GenericRelationshipType<Entities, Blocks, Object> bridge =
             entities.registerRelationship(blocks, Object.class, RelationshipTraits.defaults());
+        private final Object bridgeData = new Object();
         private final Ref<Entities> source = stores.addEntity(world);
         private final Ref<Entities> target = stores.addEntity(world);
         private final Ref<Blocks> block = stores.addBlock(world);
@@ -230,13 +294,23 @@ class RelationshipLinkReadTest {
         }
 
         private void linkBridge() {
-            relationships.addTarget(world.entityStore(), source, bridge, block, new Object());
+            relationships.addTarget(world.entityStore(), source, bridge, block, bridgeData);
         }
 
         private void visit(Direction direction, Runnable callback) {
             switch (direction) {
-                case OUTGOING -> relationships.forEachLink(source, (type, target, data) -> callback.run());
-                case INCOMING -> relationships.forEachIncomingLink(block, (type, from, data) -> callback.run());
+                case OUTGOING_ANY -> relationships.forEachLinkAny(source, (type, target, data) -> callback.run());
+                case INCOMING_ANY -> relationships.forEachIncomingLinkAny(block, (type, from, data) -> callback.run());
+                case OUTGOING -> relationships.forEachLink(source, bridge, (target, data) -> {
+                    assertSame(block, target);
+                    assertSame(bridgeData, data);
+                    callback.run();
+                });
+                case INCOMING -> relationships.forEachIncomingLink(block, bridge, (from, data) -> {
+                    assertSame(source, from);
+                    assertSame(bridgeData, data);
+                    callback.run();
+                });
             }
         }
 
@@ -250,8 +324,10 @@ class RelationshipLinkReadTest {
         private void read(Read read) {
             switch (read) {
                 case HAS_TARGET -> relationships.hasTarget(source, follows, target);
-                case OUTGOING -> relationships.forEachLink(source, (type, target, data) -> { });
-                case INCOMING -> relationships.forEachIncomingLink(target, (type, source, data) -> { });
+                case OUTGOING_ANY -> relationships.forEachLinkAny(source, (type, target, data) -> { });
+                case INCOMING_ANY -> relationships.forEachIncomingLinkAny(target, (type, source, data) -> { });
+                case OUTGOING -> relationships.forEachLink(source, follows, (target, data) -> { });
+                case INCOMING -> relationships.forEachIncomingLink(target, follows, (source, data) -> { });
             }
         }
 

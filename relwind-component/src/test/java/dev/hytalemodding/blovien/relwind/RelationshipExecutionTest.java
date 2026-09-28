@@ -37,6 +37,26 @@ class RelationshipExecutionTest {
     }
 
     @Test
+    void processingRemainsHeldUntilAllNestedOperationsEnd() {
+        var tracker = new RelationshipProcessingTracker();
+        tracker.beginTraversal();
+        tracker.beginMutation();
+        tracker.beginDeletion();
+
+        assertThrows(IllegalStateException.class, tracker::beginDeletion);
+        assertThrows(IllegalStateException.class, tracker::assertNotProcessing);
+
+        tracker.endMutation();
+        assertThrows(IllegalStateException.class, tracker::assertNotProcessing);
+
+        tracker.endTraversal();
+        assertThrows(IllegalStateException.class, tracker::assertNotProcessing);
+
+        tracker.endDeletion();
+        assertDoesNotThrow(tracker::assertNotProcessing);
+    }
+
+    @Test
     void nestedFetchesPreserveOuterBindingsWhenTheInnerReaderFails() {
         try (var fixture = new StoreFixture()) {
             var types = new RelationshipTypeRegistry<>(fixture.registry());

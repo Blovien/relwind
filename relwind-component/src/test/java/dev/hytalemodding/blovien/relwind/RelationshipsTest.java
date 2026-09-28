@@ -931,6 +931,37 @@ class RelationshipsTest {
     }
 
     @Test
+    void bridgeTypedTraversalsShareProcessingWithSiblingTypeRegistries() {
+        try (var fixture = new BridgeStoreFixture()) {
+            var world = fixture.addWorld("overworld");
+            var entityTypes = entityTypes(fixture);
+            var blockTypes = blockTypes(fixture);
+            var entitySibling = new RelationshipTypeRegistry<>(fixture.entityRegistry());
+            var blockSibling = new RelationshipTypeRegistry<>(fixture.blockRegistry());
+            var anchoredTo = entityTypes.registerRelationship(blockTypes, RelationshipTraits.defaults());
+            var follows = entitySibling.registerRelationship(RelationshipTraits.defaults());
+            var touches = blockSibling.registerRelationship(RelationshipTraits.defaults());
+            var source = fixture.addEntity(world);
+            var otherSource = fixture.addEntity(world);
+            var block = fixture.addBlock(world);
+            var otherBlock = fixture.addBlock(world);
+            relationships.addTarget(world.entityStore(), source, anchoredTo, block);
+
+            relationships.forEachTarget(source, anchoredTo, ignored ->
+                assertThrows(IllegalStateException.class,
+                    () -> relationships.addTarget(world.entityStore(), otherSource, follows, source)));
+            relationships.forEachIncomingSource(block, anchoredTo, ignored ->
+                assertThrows(IllegalStateException.class,
+                    () -> relationships.addTarget(world.blockStore(), otherBlock, touches, block)));
+
+            relationships.addTarget(world.entityStore(), otherSource, follows, source);
+            relationships.addTarget(world.blockStore(), otherBlock, touches, block);
+            assertEquals(1, relationships.getTargetCount(otherSource, follows));
+            assertEquals(1, relationships.getTargetCount(otherBlock, touches));
+        }
+    }
+
+    @Test
     void aBridgeCommandHoldsTheSourceModuleAndTheTargetModuleWhileItWrites() {
         try (var fixture = new BridgeStoreFixture()) {
             var world = fixture.addWorld("overworld");

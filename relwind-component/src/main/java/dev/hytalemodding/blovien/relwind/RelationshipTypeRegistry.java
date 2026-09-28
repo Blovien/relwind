@@ -11,6 +11,7 @@ import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.component.ComponentRegistry;
 import com.hypixel.hytale.component.IComponentRegistry;
 import com.hypixel.hytale.component.ComponentType;
+import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.component.system.ISystem;
 import com.hypixel.hytale.component.system.QuerySystem;
@@ -83,6 +84,16 @@ public final class RelationshipTypeRegistry<ECS_TYPE> {
     @Nonnull
     IComponentRegistry<ECS_TYPE> getRegistrar() {
         return registrar;
+    }
+
+    @Nonnull
+    RelationshipAccessResource<ECS_TYPE> getAccessResource(Store<ECS_TYPE> store) {
+        return access.resourceFor(store);
+    }
+
+    @Nonnull
+    RelationshipProcessingTracker getProcessingTracker(Store<ECS_TYPE> store) {
+        return getAccessResource(store).getProcessingTracker();
     }
 
     @Nonnull
