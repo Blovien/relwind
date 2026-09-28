@@ -48,7 +48,8 @@ class PlayerLifecycleTest {
             players.registerEvents(pluginEvents);
             assertTrue(events.dispatchFor(PlayerDisconnectEvent.class).hasListener());
             assertTrue(events.dispatchFor(RemovedPlayerFromWorldEvent.class, "test").hasListener());
-            assertTrue(events.dispatchFor(DrainPlayerFromWorldEvent.class, "test").hasListener());
+            // Drain is synchronous in release and asynchronous in pre-release.
+            assertTrue(events.getRegistry(DrainPlayerFromWorldEvent.class).dispatchFor("test").hasListener());
             assertTrue(events.dispatchFor(AddPlayerToWorldEvent.class, "test").hasListener());
             var unrelated = events.register(PlayerDisconnectEvent.class, ignored -> { });
 
@@ -60,7 +61,7 @@ class PlayerLifecycleTest {
             unrelated.unregister();
             assertFalse(events.dispatchFor(PlayerDisconnectEvent.class).hasListener());
             assertFalse(events.dispatchFor(RemovedPlayerFromWorldEvent.class, "test").hasListener());
-            assertFalse(events.dispatchFor(DrainPlayerFromWorldEvent.class, "test").hasListener());
+            assertFalse(events.getRegistry(DrainPlayerFromWorldEvent.class).dispatchFor("test").hasListener());
             assertFalse(events.dispatchFor(AddPlayerToWorldEvent.class, "test").hasListener());
 
             var reRegistered = new PlayerLifecycle(new CoreServerTracker(relationships, (store, id) -> { }));
@@ -69,7 +70,7 @@ class PlayerLifecycleTest {
 
             assertTrue(events.dispatchFor(PlayerDisconnectEvent.class).hasListener());
             assertTrue(events.dispatchFor(RemovedPlayerFromWorldEvent.class, "test").hasListener());
-            assertTrue(events.dispatchFor(DrainPlayerFromWorldEvent.class, "test").hasListener());
+            assertTrue(events.getRegistry(DrainPlayerFromWorldEvent.class).dispatchFor("test").hasListener());
             assertTrue(events.dispatchFor(AddPlayerToWorldEvent.class, "test").hasListener());
 
             reRegistered.close();
@@ -77,7 +78,7 @@ class PlayerLifecycleTest {
 
             assertFalse(events.dispatchFor(PlayerDisconnectEvent.class).hasListener());
             assertFalse(events.dispatchFor(RemovedPlayerFromWorldEvent.class, "test").hasListener());
-            assertFalse(events.dispatchFor(DrainPlayerFromWorldEvent.class, "test").hasListener());
+            assertFalse(events.getRegistry(DrainPlayerFromWorldEvent.class).dispatchFor("test").hasListener());
             assertFalse(events.dispatchFor(AddPlayerToWorldEvent.class, "test").hasListener());
         } finally {
             relationships.close();
