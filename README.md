@@ -64,13 +64,15 @@ For the playable examples, also install `relwind-examples/target/relwind-example
 
 ## Use Relwind in your plugin
 
-After building and installing Relwind locally, add this dependency to your plugin's `pom.xml`, alongside your matching Hytale Server dependency:
+Add this dependency to your plugin's `pom.xml`, alongside your matching Hytale
+Server dependency. This example uses the pre-release channel for a Relwind
+`v0.1.0` release:
 
 ```xml
 <dependency>
     <groupId>io.github.blovien</groupId>
     <artifactId>relwind</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.0-hytale-pre-release</version>
     <scope>provided</scope>
 </dependency>
 ```
@@ -87,39 +89,7 @@ Merge this entry into your plugin's `manifest.json` dependencies:
 }
 ```
 
-The dependency ensures Relwind is set up before your plugin accesses `Relwind.get()`. The [example plugin](relwind-examples/src/main/java/dev/hytalemodding/blovien/relwind/examples/RelwindExamplePlugin.java) shows registration alongside ordinary Hytale components and systems.
-
-## Maven Central releases
-
-Published releases use a separate Maven version for each Hytale channel. For a
-Relwind tag such as `v0.1.0`, use `io.github.blovien:relwind:0.1.0-hytale-release`
-with the Hytale release server, or
-`io.github.blovien:relwind:0.1.0-hytale-pre-release` with the pre-release server.
-The Java package names stay `dev.hytalemodding.blovien.relwind`. The
-`relwind-component` and `relwind-coreserver` artifacts use the same group and
-channel-specific version. Add the matching Hytale Maven repository to your
-plugin build to resolve the Hytale Server dependency.
-
-To stage a new tag's Maven artifacts in Central Portal:
-
-1. Verify the `io.github.blovien` namespace in [Central Portal](https://central.sonatype.com/)
-   using the `Blovien` GitHub account, then create a [Portal user token](https://central.sonatype.org/publish/generate-portal-token/)
-   and a GPG signing key. Share the public key as described in
-   [Central's signing instructions](https://central.sonatype.org/publish/requirements/gpg/).
-2. Add the token username and password as GitHub Actions secrets
-   `CENTRAL_USERNAME` and `CENTRAL_PASSWORD`. Add an ASCII-armored exported
-   private key as `MAVEN_GPG_KEY` and its passphrase as `MAVEN_GPG_PASSPHRASE`.
-3. Set the repository variable `MAVEN_CENTRAL_ENABLED` to `true`. When a new
-   `vMAJOR.MINOR.PATCH` or pre-release tag is pushed, the release workflow
-   builds both channels, creates the GitHub Release, and uploads two signed
-   bundles to Central Portal for validation.
-4. Inspect the release and pre-release deployments in Central Portal, then
-   publish each validated deployment there. The workflow leaves automatic
-   publication disabled.
-
-The Central bundles contain `relwind`, `relwind-component`, and
-`relwind-coreserver`. The examples plugin remains available in the GitHub
-Release. Central releases are immutable, so use a new tag for a correction.
+The dependency ensures Relwind is set up before your plugin accesses `Relwind.get()`. The [example plugin](relwind-examples/src/main/java/io/github/blovien/relwind/examples/RelwindExamplePlugin.java) shows registration alongside ordinary Hytale components and systems.
 
 ## Project layout
 
@@ -130,7 +100,7 @@ Release. Central releases are immutable, so use a new tag for a correction.
 | [`relwind`](relwind) | Server plugin entry point and bundled distribution JAR. |
 | [`relwind-examples`](relwind-examples) | Separate playable example plugin. |
 
-For a custom Store kind, start with [`StoreInstallation`](relwind-component/src/main/java/dev/hytalemodding/blovien/relwind/StoreInstallation.java), [`PersistenceIdentity`](relwind-component/src/main/java/dev/hytalemodding/blovien/relwind/PersistenceIdentity.java), and [`StoreRuntime`](relwind-component/src/main/java/dev/hytalemodding/blovien/relwind/StoreRuntime.java). Ordinary server plugins use the installations already exposed by `Relwind.get()`.
+For a custom Store kind, start with [`StoreInstallation`](relwind-component/src/main/java/io/github/blovien/relwind/StoreInstallation.java), [`PersistenceIdentity`](relwind-component/src/main/java/io/github/blovien/relwind/PersistenceIdentity.java), and [`StoreRuntime`](relwind-component/src/main/java/io/github/blovien/relwind/StoreRuntime.java). Ordinary server plugins use the installations already exposed by `Relwind.get()`.
 
 ## Development and documentation
 
