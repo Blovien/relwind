@@ -67,3 +67,46 @@ jobs:
           fi
           gh release create "$TAG" dist/* --verify-tag --generate-notes \
             --title "Relwind $VERSION" "${flags[@]}"
+
+  central:
+    name: Stage Maven Central (${{ matrix.channel }})
+    needs: [version, build, publish]
+    if: vars.MAVEN_CENTRAL_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [release, pre-release]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: '**/pom.xml'
+          server-id: central
+          server-username-env-var: CENTRAL_USERNAME
+          server-password-env-var: CENTRAL_PASSWORD
+      - name: Set channel-specific Maven version
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          CHANNEL: ${{ matrix.channel }}
+        run: >-
+          mvn --batch-mode --no-transfer-progress
+          org.codehaus.mojo:versions-maven-plugin:2.19.1:set
+          -DnewVersion="$VERSION-hytale-$CHANNEL" -DgenerateBackupPoms=false
+          -DprocessAllModules=true
+      - name: Upload signed bundle for Portal validation
+        env:
+          CHANNEL: ${{ matrix.channel }}
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          MAVEN_GPG_KEY: ${{ secrets.MAVEN_GPG_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: >-
+          mvn --batch-mode --no-transfer-progress -Pcentral
+          -Dhytale.channel="$CHANNEL" -Dgpg.signer=bc clean deploy

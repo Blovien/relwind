@@ -10,13 +10,14 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>dev.hytalemodding.blovien</groupId>
+    <groupId>io.github.blovien</groupId>
     <artifactId>relwind-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>Relwind</name>
     <description>Entity relationships for Hytale's Java ECS.</description>
+    <url>https://github.com/Blovien/relwind</url>
     <licenses>
         <license>
             <name>GNU Lesser General Public License, version 3.0 only</name>
@@ -24,6 +25,20 @@
             <distribution>repo</distribution>
         </license>
     </licenses>
+    <developers>
+        <developer>
+            <id>Blovien</id>
+            <name>Blovien</name>
+            <url>https://github.com/Blovien</url>
+        </developer>
+    </developers>
+    <scm child.scm.connection.inherit.append.path="false"
+         child.scm.developerConnection.inherit.append.path="false"
+         child.scm.url.inherit.append.path="false">
+        <connection>scm:git:https://github.com/Blovien/relwind.git</connection>
+        <developerConnection>scm:git:https://github.com/Blovien/relwind.git</developerConnection>
+        <url>https://github.com/Blovien/relwind</url>
+    </scm>
 
     <modules>
         <module>relwind-component</module>
@@ -137,6 +152,59 @@
                                 </configuration>
                             </execution>
                         </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>central</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>flatten-maven-plugin</artifactId>
+                        <version>1.8.0</version>
+                        <configuration>
+                            <flattenMode>ossrh</flattenMode>
+                            <updatePomFile>true</updatePomFile>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>flatten-for-central</id>
+                                <phase>process-resources</phase>
+                                <goals><goal>flatten</goal></goals>
+                            </execution>
+                            <execution>
+                                <id>clean-flattened-pom</id>
+                                <goals><goal>clean</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>3.2.8</version>
+                        <executions>
+                            <execution>
+                                <id>sign-for-central</id>
+                                <phase>verify</phase>
+                                <goals><goal>sign</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.11.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <autoPublish>false</autoPublish>
+                            <excludeArtifacts>
+                                <excludeArtifact>relwind-parent</excludeArtifact>
+                                <excludeArtifact>relwind-examples</excludeArtifact>
+                            </excludeArtifacts>
+                        </configuration>
                     </plugin>
                 </plugins>
             </build>

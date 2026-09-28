@@ -49,7 +49,7 @@ Relwind supports one server version for each release channel:
 
 | Channel | Hytale version | Build command |
 | --- | --- | --- |
-| Pre-release (default) | e.g. `0.7.0-pre.3.1` | `mvn clean install` |
+| Pre-release (default) | e.g. `0.7.0-pre.4` | `mvn clean install` |
 | Release | e.g. `0.6.8` | `mvn -Dhytale.channel=release clean install` |
 
 ## Install on a server
@@ -68,7 +68,7 @@ After building and installing Relwind locally, add this dependency to your plugi
 
 ```xml
 <dependency>
-    <groupId>dev.hytalemodding.blovien</groupId>
+    <groupId>io.github.blovien</groupId>
     <artifactId>relwind</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <scope>provided</scope>
@@ -88,6 +88,38 @@ Merge this entry into your plugin's `manifest.json` dependencies:
 ```
 
 The dependency ensures Relwind is set up before your plugin accesses `Relwind.get()`. The [example plugin](relwind-examples/src/main/java/dev/hytalemodding/blovien/relwind/examples/RelwindExamplePlugin.java) shows registration alongside ordinary Hytale components and systems.
+
+## Maven Central releases
+
+Published releases use a separate Maven version for each Hytale channel. For a
+Relwind tag such as `v0.1.0`, use `io.github.blovien:relwind:0.1.0-hytale-release`
+with the Hytale release server, or
+`io.github.blovien:relwind:0.1.0-hytale-pre-release` with the pre-release server.
+The Java package names stay `dev.hytalemodding.blovien.relwind`. The
+`relwind-component` and `relwind-coreserver` artifacts use the same group and
+channel-specific version. Add the matching Hytale Maven repository to your
+plugin build to resolve the Hytale Server dependency.
+
+To stage a new tag's Maven artifacts in Central Portal:
+
+1. Verify the `io.github.blovien` namespace in [Central Portal](https://central.sonatype.com/)
+   using the `Blovien` GitHub account, then create a [Portal user token](https://central.sonatype.org/publish/generate-portal-token/)
+   and a GPG signing key. Share the public key as described in
+   [Central's signing instructions](https://central.sonatype.org/publish/requirements/gpg/).
+2. Add the token username and password as GitHub Actions secrets
+   `CENTRAL_USERNAME` and `CENTRAL_PASSWORD`. Add an ASCII-armored exported
+   private key as `MAVEN_GPG_KEY` and its passphrase as `MAVEN_GPG_PASSPHRASE`.
+3. Set the repository variable `MAVEN_CENTRAL_ENABLED` to `true`. When a new
+   `vMAJOR.MINOR.PATCH` or pre-release tag is pushed, the release workflow
+   builds both channels, creates the GitHub Release, and uploads two signed
+   bundles to Central Portal for validation.
+4. Inspect the release and pre-release deployments in Central Portal, then
+   publish each validated deployment there. The workflow leaves automatic
+   publication disabled.
+
+The Central bundles contain `relwind`, `relwind-component`, and
+`relwind-coreserver`. The examples plugin remains available in the GitHub
+Release. Central releases are immutable, so use a new tag for a correction.
 
 ## Project layout
 
