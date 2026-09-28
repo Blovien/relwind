@@ -15,6 +15,14 @@ VERSION = re.compile(r"[0-9][A-Za-z0-9._-]*\Z")
 NAMESPACE = {"m": "http://maven.apache.org/POM/4.0.0"}
 
 
+def fetch_metadata(channel: str) -> bytes:
+    url = f"{REPOSITORY}/{channel}/{ARTIFACT}"
+    request = urllib.request.Request(
+        url, headers={"User-Agent": "relwind-hytale-updater/1.0", "Accept": "application/xml"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return response.read()
+
+
 def latest_version(metadata: bytes, current: str) -> str:
     root = ET.fromstring(metadata)
     if root.findtext("groupId") != "com.hypixel.hytale" or root.findtext("artifactId") != "Server":
@@ -88,9 +96,7 @@ def main() -> None:
     if args.metadata:
         metadata = args.metadata.read_bytes()
     else:
-        url = f"{REPOSITORY}/{args.channel}/{ARTIFACT}"
-        with urllib.request.urlopen(url, timeout=30) as response:
-            metadata = response.read()
+        metadata = fetch_metadata(args.channel)
 
     original = args.pom.read_text(encoding="utf-8")
     updated, old, new = update_pom(original, args.channel, metadata)
