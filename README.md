@@ -49,7 +49,7 @@ Relwind supports one server version for each release channel:
 
 | Channel | Hytale version | Build command |
 | --- | --- | --- |
-| Pre-release (default) | e.g. `0.7.0-pre.3.1` | `mvn clean install` |
+| Pre-release (default) | e.g. `0.7.0-pre.4` | `mvn clean install` |
 | Release | e.g. `0.6.8` | `mvn -Dhytale.channel=release clean install` |
 
 ## Install on a server
@@ -64,13 +64,15 @@ For the playable examples, also install `relwind-examples/target/relwind-example
 
 ## Use Relwind in your plugin
 
-After building and installing Relwind locally, add this dependency to your plugin's `pom.xml`, alongside your matching Hytale Server dependency:
+Add this dependency to your plugin's `pom.xml`, alongside your matching Hytale
+Server dependency. This example uses the pre-release channel for a Relwind
+`v0.1.0` release:
 
 ```xml
 <dependency>
-    <groupId>dev.hytalemodding.blovien</groupId>
+    <groupId>io.github.blovien</groupId>
     <artifactId>relwind</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.0-hytale-pre-release</version>
     <scope>provided</scope>
 </dependency>
 ```
@@ -87,7 +89,7 @@ Merge this entry into your plugin's `manifest.json` dependencies:
 }
 ```
 
-The dependency ensures Relwind is set up before your plugin accesses `Relwind.get()`. The [example plugin](relwind-examples/src/main/java/dev/hytalemodding/blovien/relwind/examples/RelwindExamplePlugin.java) shows registration alongside ordinary Hytale components and systems.
+The dependency ensures Relwind is set up before your plugin accesses `Relwind.get()`. The [example plugin](relwind-examples/src/main/java/io/github/blovien/relwind/examples/RelwindExamplePlugin.java) shows registration alongside ordinary Hytale components and systems.
 
 ## Project layout
 
@@ -98,7 +100,7 @@ The dependency ensures Relwind is set up before your plugin accesses `Relwind.ge
 | [`relwind`](relwind) | Server plugin entry point and bundled distribution JAR. |
 | [`relwind-examples`](relwind-examples) | Separate playable example plugin. |
 
-For a custom Store kind, start with [`StoreInstallation`](relwind-component/src/main/java/dev/hytalemodding/blovien/relwind/StoreInstallation.java), [`PersistenceIdentity`](relwind-component/src/main/java/dev/hytalemodding/blovien/relwind/PersistenceIdentity.java), and [`StoreRuntime`](relwind-component/src/main/java/dev/hytalemodding/blovien/relwind/StoreRuntime.java). Ordinary server plugins use the installations already exposed by `Relwind.get()`.
+For a custom Store kind, start with [`StoreInstallation`](relwind-component/src/main/java/io/github/blovien/relwind/StoreInstallation.java), [`PersistenceIdentity`](relwind-component/src/main/java/io/github/blovien/relwind/PersistenceIdentity.java), and [`StoreRuntime`](relwind-component/src/main/java/io/github/blovien/relwind/StoreRuntime.java). Ordinary server plugins use the installations already exposed by `Relwind.get()`.
 
 ## Development and documentation
 
