@@ -1,0 +1,79 @@
+name: Check Hytale Server versions
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hytale-updates
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Check ${{ matrix.channel }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [release, pre-release]
+    env:
+      CHANNEL: ${{ matrix.channel }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Check Maven metadata and update pin
+        id: version
+        run: python3 .github/scripts/update_hytale.py "$CHANNEL" >> "$GITHUB_OUTPUT"
+      - name: Open or update channel PR
+        if: steps.version.outputs.changed == 'true'
+        env:
+          OLD_VERSION: ${{ steps.version.outputs.old }}
+          NEW_VERSION: ${{ steps.version.outputs.new }}
+        run: |
+          branch="automation/hytale-$CHANNEL"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$branch"
+          git add pom.xml
+          git commit -m "Update Hytale $CHANNEL Server to $NEW_VERSION"
+
+          # Preserve the existing PR commit when the generated POM is identical.
+          pushed=false
+          if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+            git fetch origin "refs/heads/$branch:refs/remotes/origin/$branch"
+            if git diff --quiet "origin/$branch" HEAD -- pom.xml; then
+              echo 'Channel PR already contains this version.'
+            else
+              git push --force-with-lease origin "HEAD:refs/heads/$branch"
+              pushed=true
+            fi
+          else
+            git push origin "HEAD:refs/heads/$branch"
+            pushed=true
+          fi
+
+          title="Update Hytale $CHANNEL Server to $NEW_VERSION"
+          body="Updates the $CHANNEL channel's pinned Hytale Server dependency from $OLD_VERSION to $NEW_VERSION. Source: [Hytale Maven metadata](https://maven.hytale.com/$CHANNEL/com/hypixel/hytale/Server/maven-metadata.xml). CI builds and tests both channels."
+          number=$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --title "$title" --body "$body"
+          else
+            gh pr create --head "$branch" --base main --title "$title" --body "$body"
+            pushed=true
+          fi
+
+          # GITHUB_TOKEN PR events do not start CI, but workflow_dispatch does.
+          if [ "$pushed" = true ]; then
+            gh workflow run ci.yml --ref "$branch"
+          fi
