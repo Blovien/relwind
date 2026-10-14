@@ -62,7 +62,7 @@
             <activation><property><name>hytale.channel</name><value>release</value></property></activation>
             <properties>
                 <hytale.channel>release</hytale.channel>
-                <hytale.version>0.6.8</hytale.version>
+                <hytale.version>0.7.1</hytale.version>
             </properties>
             <repositories>
                 <repository>
@@ -90,8 +90,8 @@
                                         </requireProperty>
                                         <requireProperty>
                                             <property>hytale.version</property>
-                                            <regex>0[.]6[.]8</regex>
-                                            <message>The release channel requires pinned version 0.6.8.</message>
+                                            <regex>0[.]7[.]1</regex>
+                                            <message>The release channel requires pinned version 0.7.1.</message>
                                         </requireProperty>
                                         <bannedDependencies>
                                             <excludes><exclude>com.hypixel.hytale:*</exclude></excludes>
